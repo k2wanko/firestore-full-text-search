@@ -1,0 +1,1 @@
+# Firestore Full-Text Search
