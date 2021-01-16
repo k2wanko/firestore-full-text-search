@@ -7,6 +7,13 @@
     "package.json",
     "lib"
   ],
+  "keywords": [
+    "search",
+    "Full Text Search",
+    "Firebase",
+    "firebase",
+    "firestore"
+  ],
   "version": "0.1.1",
   "description": "Firestore Full-text Search",
   "scripts": {
