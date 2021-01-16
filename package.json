@@ -1,0 +1,47 @@
+{
+  "name": "firestore-full-text-search",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "README.md",
+    "package.json",
+    "lib"
+  ],
+  "version": "0.1.0",
+  "description": "Firestore Full-text Search",
+  "scripts": {
+    "test": "firebase emulators:exec jest",
+    "start:emulators": "firebase emulators:start --project test",
+    "jest": "jest",
+    "lint": "gts lint",
+    "clean": "gts clean",
+    "compile": "tsc",
+    "fix": "gts fix",
+    "prepare": "npm run compile",
+    "pretest": "npm run compile",
+    "posttest": "npm run lint"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/k2wanko/firestore-full-text-search.git"
+  },
+  "author": "k2wanko",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/k2wanko/firestore-full-text-search/issues"
+  },
+  "homepage": "https://github.com/k2wanko/firestore-full-text-search#readme",
+  "devDependencies": {
+    "@google-cloud/firestore": "^4.8.1",
+    "@types/jest": "^26.0.20",
+    "@types/node": "^14.11.2",
+    "firebase-tools": "^9.2.1",
+    "gts": "^3.0.3",
+    "ts-jest": "^26.4.4",
+    "typescript": "^4.0.3"
+  },
+  "dependencies": {
+    "firebase-admin": "^9.4.2",
+    "firebase-functions": "^3.13.0"
+  }
+}
