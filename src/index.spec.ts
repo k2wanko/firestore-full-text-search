@@ -1,6 +1,23 @@
 import admin from 'firebase-admin';
 import FirestoreFullTextSearch from './index';
 import type {FieldValue} from '@google-cloud/firestore';
+import {LogLevel} from '@opentelemetry/core';
+import {NodeTracerProvider} from '@opentelemetry/node';
+import {SimpleSpanProcessor, ConsoleSpanExporter} from '@opentelemetry/tracing';
+import {trace, metrics} from '@opentelemetry/api';
+import {MeterProvider, ConsoleMetricExporter} from '@opentelemetry/metrics';
+
+const provider = new NodeTracerProvider({
+  logLevel: LogLevel.ERROR,
+});
+provider.register();
+provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
+trace.setGlobalTracerProvider(provider);
+metrics.setGlobalMeterProvider(
+  new MeterProvider({
+    exporter: new ConsoleMetricExporter(),
+  })
+);
 
 process.env.FIRESTORE_EMULATOR_HOST =
   process.env.FIRESTORE_EMULATOR_HOST || 'localhost:5000';
