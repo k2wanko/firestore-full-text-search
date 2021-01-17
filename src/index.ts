@@ -5,8 +5,11 @@ import type {
   Firestore,
   WriteBatch,
 } from '@google-cloud/firestore';
-import tokenize from './tokenizer/tokenize';
 import type {LanguageID} from './tokenizer';
+import tokenize from './tokenizer/tokenize';
+import type {Counter} from '@opentelemetry/api';
+import type {Tracer} from '@opentelemetry/api/build/src/trace/tracer';
+import {trace, metrics} from '@opentelemetry/api';
 
 export type FieldEntity = {
   positions: Buffer;
@@ -22,15 +25,31 @@ export type SearchOptions = {
   limit: number;
 };
 
+const tracer = trace.getTracer('firestore-full-text-search');
+
+const meter = metrics.getMeterProvider().getMeter('firestore-full-text-search');
+const documentWriteCounter = meter.createCounter('document_write_count');
+const documentWriteTokenCounter = meter.createCounter(
+  'document_write_token_count'
+);
+const searchTokenCounter = meter.createCounter('search_token_count');
+
 export default class FirestoreFullTextSearch {
   #ref: CollectionReference;
   #db: Firestore;
+
   constructor(ref: CollectionReference) {
     this.#ref = ref;
     this.#db = ref.firestore;
   }
 
   async set(lang: LanguageID, doc: DocumentReference, options?: SetOptions) {
+    const span = tracer.startSpan('set');
+    span.setAttributes({
+      index: this.#ref.path,
+      doc: doc.path,
+      lang,
+    });
     let data = options?.data;
     if (!data) {
       const snap = await doc.get();
@@ -42,6 +61,8 @@ export default class FirestoreFullTextSearch {
 
     const batch = options?.batch ?? this.#db.batch();
 
+    let writeCount = 0;
+    let writeTokenCount = 0;
     for (const [fieldName, vaule] of Object.entries(data)) {
       if (typeof vaule !== 'string') {
         continue;
@@ -57,15 +78,36 @@ export default class FirestoreFullTextSearch {
           positions: new Uint8Array(token.positions),
           ref: doc,
         });
+        writeCount += 1;
       }
+      writeTokenCount += tokens.length;
     }
 
     if (!options?.batch) {
       await batch.commit();
     }
+
+    documentWriteCounter
+      .bind({
+        index: this.#ref.path,
+        lang,
+      })
+      .add(writeCount);
+    documentWriteTokenCounter
+      .bind({
+        index: this.#ref.path,
+        lang,
+      })
+      .add(writeTokenCount);
+    span.end();
   }
 
   async search(lang: LanguageID, query: string, options?: SearchOptions) {
+    const span = tracer.startSpan('search');
+    span.setAttributes({
+      index: this.#ref.path,
+      lang,
+    });
     const tokens = tokenize(lang, query);
     const results: {[key: string]: DocumentReference} = {};
     for (const token of tokens) {
@@ -78,6 +120,14 @@ export default class FirestoreFullTextSearch {
       }
     }
 
+    searchTokenCounter
+      .bind({
+        index: this.#ref.path,
+        lang,
+      })
+      .add(tokens.length);
+
+    span.end();
     return Object.values(results);
   }
 }

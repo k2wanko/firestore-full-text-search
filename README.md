@@ -52,6 +52,6 @@ const results = await fullTextSearch.search('en', 'firestore');
 - [ ] Sorting Support
 - [ ] Limit Support
 - [ ] Pagination Support
-- [ ] OpenTelemetry Support
+- [x] OpenTelemetry Support
 - [ ] Browser Support (Search-Only)
 - [ ] Firebase Performance Monitoring Support
