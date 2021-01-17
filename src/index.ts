@@ -8,6 +8,7 @@ import type {
 import type {LanguageID} from './tokenizer';
 import tokenize from './tokenizer/tokenize';
 import {trace, metrics} from '@opentelemetry/api';
+import {parseQuery, SearchQuery} from './query';
 
 export type FieldEntity = {
   positions: Buffer;
@@ -100,30 +101,43 @@ export default class FirestoreFullTextSearch {
     span.end();
   }
 
-  async search(lang: LanguageID, query: string, options?: SearchOptions) {
+  async search(
+    lang: LanguageID,
+    stringOrQuery: string | SearchQuery,
+    options?: SearchOptions
+  ) {
     const span = tracer.startSpan('search');
     span.setAttributes({
       index: this.#ref.path,
       lang,
     });
-    const tokens = tokenize(lang, query);
-    const results: {[key: string]: DocumentReference} = {};
-    for (const token of tokens) {
-      const docsRef = this.#ref.doc(token.word).collection('docs');
-      const query = docsRef.limit(options?.limit ?? 500);
-      const snap = await query.get();
-      for (const doc of snap.docs) {
-        const data = doc.data() as FieldEntity;
-        results[data.ref.id] = data.ref;
-      }
+
+    let query: SearchQuery;
+    if (typeof stringOrQuery === 'string') {
+      query = parseQuery(stringOrQuery);
+    } else {
+      query = stringOrQuery;
     }
 
-    searchTokenCounter
-      .bind({
-        index: this.#ref.path,
-        lang,
-      })
-      .add(tokens.length);
+    const results: {[key: string]: DocumentReference} = {};
+    for (const keyword of query.keywords) {
+      const tokens = tokenize(lang, keyword);
+      for (const token of tokens) {
+        const docsRef = this.#ref.doc(token.word).collection('docs');
+        const query = docsRef.limit(options?.limit ?? 500);
+        const snap = await query.get();
+        for (const doc of snap.docs) {
+          const data = doc.data() as FieldEntity;
+          results[data.ref.id] = data.ref;
+        }
+      }
+      searchTokenCounter
+        .bind({
+          index: this.#ref.path,
+          lang,
+        })
+        .add(tokens.length);
+    }
 
     span.end();
     return Object.values(results);

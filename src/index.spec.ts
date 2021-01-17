@@ -101,6 +101,15 @@ describe('FirestoreFullTextSearch:english', () => {
     expect(results[0].id).toBe('gF4lmS8gOlkAPlqGzTHh');
   });
 
+  it('search:double-keywords', async () => {
+    const db = admin.firestore();
+    const indexRef = db.collection('index_simple');
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    const results = await fullTextSearch.search('en', 'firebase firestore');
+
+    expect(results.length).toBe(2);
+  });
+
   it('search:nothing', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_simple');

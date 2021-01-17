@@ -47,7 +47,7 @@ const results = await fullTextSearch.search('en', 'firestore');
 
 - [x] English Support
 - [ ] Japanese Support
-- [ ] Implement Query parser
+- [x] Implement Query parser
 - [ ] Implement Delete document 
 - [ ] Sorting Support
 - [ ] Limit Support
