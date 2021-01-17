@@ -7,8 +7,6 @@ import type {
 } from '@google-cloud/firestore';
 import type {LanguageID} from './tokenizer';
 import tokenize from './tokenizer/tokenize';
-import type {Counter} from '@opentelemetry/api';
-import type {Tracer} from '@opentelemetry/api/build/src/trace/tracer';
 import {trace, metrics} from '@opentelemetry/api';
 
 export type FieldEntity = {
