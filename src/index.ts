@@ -83,6 +83,10 @@ export default class FirestoreFullTextSearch {
         }
       }
 
+      if (fieldName.startsWith('__')) {
+        continue;
+      }
+
       if (typeof vaule !== 'string') {
         continue;
       }
