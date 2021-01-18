@@ -113,14 +113,22 @@ describe('querySearch', () => {
 
     const indexRef = db.collection('index');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    await fullTextSearch.set('en', docRef, {batch, data: postData});
-    await fullTextSearch.set('en', docRef2, {batch, data: postData2});
+    await fullTextSearch.set('en', docRef, {
+      batch,
+      data: postData,
+      fieldMask: ['content'],
+      fields: ['label'],
+    });
+    await fullTextSearch.set('en', docRef2, {
+      batch,
+      data: postData2,
+      fieldMask: ['content'],
+      fields: ['label'],
+    });
 
     await batch.commit();
 
-    const res = await fullTextSearch.search('en', 'hello label:published', {
-      typeHints: {label: {type: 'array'}},
-    });
+    const res = await fullTextSearch.search('en', 'hello label:published');
     expect(res.length).toBe(1);
   });
 });

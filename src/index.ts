@@ -4,7 +4,6 @@ import {
   DocumentReference,
   FieldPath,
   Firestore,
-  WhereFilterOp,
   WriteBatch,
 } from '@google-cloud/firestore';
 import type {LanguageID} from './tokenizer';
@@ -13,18 +12,20 @@ import {trace, metrics} from '@opentelemetry/api';
 import {parseQuery, SearchQuery} from './query';
 
 export type FieldEntity = {
-  positions: Buffer;
-  ref: DocumentReference;
+  __positions: Buffer;
+  __ref: DocumentReference;
 };
 
 export type SetOptions = {
-  batch: WriteBatch;
-  data: DocumentData;
+  batch?: WriteBatch;
+  data?: DocumentData;
+  fieldMask?: string[];
+  fields?: string[];
 };
 
 export type SearchOptions = {
   limit?: number;
-  typeHints?: {[key: string]: TypeHint};
+  typeHints: {[key: string]: TypeHint};
 };
 
 export type TypeHint = {
@@ -65,11 +66,24 @@ export default class FirestoreFullTextSearch {
       data = snap.data() as DocumentData; // exists checked.
     }
 
+    const _data = data;
+    if (!_data) {
+      throw new Error('Document is empty');
+    }
+
     const batch = options?.batch ?? this.#db.batch();
+    const fieldMask = options?.fieldMask;
+    const fields = options?.fields;
 
     let writeCount = 0;
     let writeTokenCount = 0;
     for (const [fieldName, vaule] of Object.entries(data)) {
+      if (fieldMask) {
+        if (!fieldMask.includes(fieldName)) {
+          continue;
+        }
+      }
+
       if (typeof vaule !== 'string') {
         continue;
       }
@@ -77,13 +91,48 @@ export default class FirestoreFullTextSearch {
       const tokens = tokenize(lang, vaule);
       for (const token of tokens) {
         const docRef = this.#ref
+          .doc('v1')
+          .collection('words')
           .doc(token.word)
           .collection('docs')
           .doc(`${doc.id}.${fieldName}`);
-        batch.set(docRef, {
-          positions: new Uint8Array(token.positions),
-          ref: doc,
-        });
+        if (fields) {
+          const fieldTypes: {[key: string]: 'string' | 'array'} = {};
+          const fieldData: {[key: string]: unknown} = {};
+          const _fieldData = fields.reduce((p, name) => {
+            const val = _data[name];
+            if (Array.isArray(val)) {
+              fieldTypes[name] = 'array';
+              p[name] = _data[name];
+            } else {
+              switch (typeof val) {
+                case 'string':
+                  fieldTypes[name] = 'string';
+                  p[name] = _data[name];
+                  break;
+                default:
+                  throw new Error(`Unsupport filed type ${typeof val}`);
+              }
+            }
+            return p;
+          }, fieldData);
+          for (const [name, type] of Object.entries(fieldTypes)) {
+            batch.set(this.#ref.doc('v1').collection('fields').doc(name), {
+              type,
+              ref: doc,
+            });
+          }
+          batch.set(docRef, {
+            __positions: new Uint8Array(token.positions),
+            __ref: doc,
+            ..._fieldData,
+          });
+        } else {
+          batch.set(docRef, {
+            __positions: new Uint8Array(token.positions),
+            __ref: doc,
+          });
+        }
         writeCount += 1;
       }
       writeTokenCount += tokens.length;
@@ -126,25 +175,64 @@ export default class FirestoreFullTextSearch {
       searchQuery = stringOrQuery;
     }
 
-    let limit = options?.limit ?? 500;
+    let limit = options?.limit ?? 100;
     if (limit <= 0) {
       limit = 0;
     } else if (limit >= 500) {
       limit = 500;
     }
 
-    let results: {[key: string]: DocumentReference} = {};
+    const fields = searchQuery?.fields;
+    type fieldInfo = {name: string; type: 'string' | 'array'};
+    let fieldInfos: fieldInfo[] | null = null;
+    if (fields) {
+      const snap = await this.#db.getAll(
+        ...fields.map(field =>
+          this.#ref.doc('v1').collection('fields').doc(field.name)
+        )
+      );
+      fieldInfos = snap.map(doc => ({name: doc.id, type: doc.data()?.type}));
+    }
+
+    const results: {[key: string]: DocumentReference} = {};
     for (const keyword of searchQuery.keywords) {
       const tokens = tokenize(lang, keyword);
       for (const token of tokens) {
-        const docsRef = this.#ref.doc(token.word).collection('docs');
+        const docsRef = this.#ref
+          .doc('v1')
+          .collection('words')
+          .doc(token.word)
+          .collection('docs');
 
-        const query = docsRef.limit(limit);
+        let query = docsRef.limit(limit);
+        if (fieldInfos) {
+          for (const info of fieldInfos) {
+            if (!fields) {
+              continue;
+            }
+            const field = fields.find(f => f.name === info.name);
+            if (!field) {
+              continue;
+            }
+            switch (info.type) {
+              case 'string':
+                query = query.where(field.name, field.operator, field.value);
+                break;
+              case 'array':
+                query = query.where(field.name, 'array-contains-any', [
+                  field.value,
+                ]);
+                break;
+              default:
+                query = query.where(field.name, field.operator, field.value);
+            }
+          }
+        }
 
         const snap = await query.get();
         for (const doc of snap.docs) {
           const data = doc.data() as FieldEntity;
-          results[data.ref.id] = data.ref;
+          results[data.__ref.id] = data.__ref;
         }
       }
 
@@ -155,49 +243,6 @@ export default class FirestoreFullTextSearch {
         })
         .add(tokens.length);
     }
-
-    const resultsVals = Object.values(results);
-    if (resultsVals.length >= 1 && searchQuery.fields) {
-      const res: {[key: string]: DocumentReference} = {};
-
-      let query = this.#db.collection(resultsVals[0].parent.path).limit(limit);
-      for (const ref of resultsVals) {
-        query.where(FieldPath.documentId(), '==', ref.id);
-      }
-
-      const typeHints = options?.typeHints;
-
-      // TODO: @k2wanko refactoring.
-      for (const field of searchQuery.fields) {
-        if (typeHints) {
-          const typeHint = typeHints[field.name];
-          if (typeHint) {
-            switch (typeHint.type) {
-              case 'array':
-                if (field.operator === '==') {
-                  query = query.where(field.name, 'array-contains-any', [
-                    field.value,
-                  ]);
-                } else {
-                  query = query.where(field.name, field.operator, field.value);
-                }
-                break;
-              default:
-                query = query.where(field.name, field.operator, field.value);
-            }
-            continue;
-          }
-        }
-        query = query.where(field.name, field.operator, field.value);
-      }
-
-      const snap = await query.get();
-      for (const doc of snap.docs) {
-        res[doc.id] = doc.ref;
-      }
-      results = res;
-    }
-
     span.end();
     return Object.values(results);
   }
