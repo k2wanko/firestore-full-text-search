@@ -121,6 +121,6 @@ describe('querySearch', () => {
     const res = await fullTextSearch.search('en', 'hello label:published', {
       typeHints: {label: {type: 'array'}},
     });
-    console.log(res);
+    expect(res.length).toBe(1);
   });
 });
