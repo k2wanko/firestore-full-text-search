@@ -1,8 +1,7 @@
-import {
+import type {
   CollectionReference,
   DocumentData,
   DocumentReference,
-  FieldPath,
   Firestore,
   WriteBatch,
 } from '@google-cloud/firestore';
