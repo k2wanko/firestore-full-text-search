@@ -301,7 +301,9 @@ export class EnglishTokenizer implements Tokenizer {
 
   splitter(content: string): string[] {
     const words = content.trim().split(/ +/);
-    return words.map(word => word.replace(/[.,:"]+$/g, '').toLowerCase());
+    return words
+      .map(word => word.replace(/[.,:"]+$/g, '').toLowerCase())
+      .filter(v => !!v);
   }
 
   // implemented from algorithm at http://snowball.tartarus.org/algorithms/english/stemmer.html

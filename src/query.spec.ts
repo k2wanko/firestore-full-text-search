@@ -123,62 +123,60 @@ describe('parseQuery', () => {
 });
 
 describe('querySearch', () => {
-  beforeAll(() => {
-    return (async () => {
-      const db = admin.firestore();
+  beforeAll(async () => {
+    const db = admin.firestore();
 
-      const postsRef = db.collection('posts');
-      const postData: Post = {
-        title: 'Test Post',
-        content: 'Hello',
-        created: admin.firestore.FieldValue.serverTimestamp(),
-        label: ['draft'],
-      };
-      const postData2: Post = {
-        title: 'Test Post',
-        content: 'Hello',
-        created: admin.firestore.FieldValue.serverTimestamp(),
-        label: ['published'],
-      };
-      const postData3: Post = {
-        title: 'Test Post 2',
-        content: 'Hello World',
-        created: admin.firestore.FieldValue.serverTimestamp(),
-        label: ['published'],
-      };
+    const postsRef = db.collection('posts');
+    const postData: Post = {
+      title: 'Test Post',
+      content: 'Hello',
+      created: admin.firestore.FieldValue.serverTimestamp(),
+      label: ['draft'],
+    };
+    const postData2: Post = {
+      title: 'Test Post',
+      content: 'Hello',
+      created: admin.firestore.FieldValue.serverTimestamp(),
+      label: ['published'],
+    };
+    const postData3: Post = {
+      title: 'Test Post 2',
+      content: 'Hello World',
+      created: admin.firestore.FieldValue.serverTimestamp(),
+      label: ['published'],
+    };
 
-      const docRef = postsRef.doc('bF7lfaw8gOlkAPlqGzTHh');
-      const docRef2 = postsRef.doc('cF7lfawhaOlkAPlqGzTHh');
-      const docRef3 = postsRef.doc('dF7lfawhaOlkAPlqGzTHh');
+    const docRef = postsRef.doc('bF7lfaw8gOlkAPlqGzTHh');
+    const docRef2 = postsRef.doc('cF7lfawhaOlkAPlqGzTHh');
+    const docRef3 = postsRef.doc('dF7lfawhaOlkAPlqGzTHh');
 
-      const batch = db.batch();
-      batch.set(docRef, postData);
-      batch.set(docRef2, postData2);
-      batch.set(docRef3, postData3);
+    const batch = db.batch();
+    batch.set(docRef, postData);
+    batch.set(docRef2, postData2);
+    batch.set(docRef3, postData3);
 
-      const indexRef = db.collection('index');
-      const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-      await fullTextSearch.set('en', docRef, {
-        batch,
-        data: postData,
-        fieldMask: ['content'],
-        fields: ['label'],
-      });
-      await fullTextSearch.set('en', docRef2, {
-        batch,
-        data: postData2,
-        fieldMask: ['content'],
-        fields: ['label'],
-      });
-      await fullTextSearch.set('en', docRef3, {
-        batch,
-        data: postData3,
-        fieldMask: ['content'],
-        fields: ['label'],
-      });
+    const indexRef = db.collection('index');
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    await fullTextSearch.set('en', docRef, {
+      batch,
+      data: postData,
+      fieldMask: ['content'],
+      fields: ['label'],
+    });
+    await fullTextSearch.set('en', docRef2, {
+      batch,
+      data: postData2,
+      fieldMask: ['content'],
+      fields: ['label'],
+    });
+    await fullTextSearch.set('en', docRef3, {
+      batch,
+      data: postData3,
+      fieldMask: ['content'],
+      fields: ['label'],
+    });
 
-      await batch.commit();
-    })();
+    await batch.commit();
   });
 
   beforeAll(async () => {

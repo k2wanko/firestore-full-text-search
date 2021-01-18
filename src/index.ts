@@ -44,10 +44,14 @@ const searchTokenCounter = meter.createCounter('search_token_count');
 export default class FirestoreFullTextSearch {
   #ref: CollectionReference;
   #db: Firestore;
+  #wordsRef: CollectionReference;
+  #fieldsRef: CollectionReference;
 
   constructor(ref: CollectionReference) {
     this.#ref = ref;
     this.#db = ref.firestore;
+    this.#wordsRef = ref.doc('v1').collection('words');
+    this.#fieldsRef = ref.doc('v1').collection('fields');
   }
 
   async set(lang: LanguageID, doc: DocumentReference, options?: SetOptions) {
@@ -97,9 +101,7 @@ export default class FirestoreFullTextSearch {
         if (!token.word) {
           continue;
         }
-        const docRef = this.#ref
-          .doc('v1')
-          .collection('words')
+        const docRef = this.#wordsRef
           .doc(token.word)
           .collection('docs')
           .doc(`${doc.id}.${fieldName}`);
@@ -128,7 +130,7 @@ export default class FirestoreFullTextSearch {
             return p;
           }, fieldData);
           for (const [name, type] of Object.entries(fieldTypes)) {
-            batch.set(this.#ref.doc('v1').collection('fields').doc(name), {
+            batch.set(this.#fieldsRef.doc(name), {
               type,
             } as FieldTypeEntity);
           }
@@ -197,9 +199,7 @@ export default class FirestoreFullTextSearch {
     let fieldInfos: fieldInfo[] | null = null;
     if (fields) {
       const snap = await this.#db.getAll(
-        ...fields.map(field =>
-          this.#ref.doc('v1').collection('fields').doc(field.name)
-        )
+        ...fields.map(field => this.#fieldsRef.doc(field.name))
       );
       fieldInfos = snap.map(doc => ({name: doc.id, type: doc.data()?.type}));
     }
@@ -208,11 +208,7 @@ export default class FirestoreFullTextSearch {
     for (const keyword of searchQuery.keywords) {
       const tokens = tokenize(lang, keyword);
       for (const token of tokens) {
-        const docsRef = this.#ref
-          .doc('v1')
-          .collection('words')
-          .doc(token.word)
-          .collection('docs');
+        const docsRef = this.#wordsRef.doc(token.word).collection('docs');
 
         let query = docsRef.limit(limit);
         if (fieldInfos) {
