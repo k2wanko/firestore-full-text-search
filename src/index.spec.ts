@@ -26,10 +26,11 @@ admin.initializeApp({
   projectId: 'test',
 });
 
-type Post = {
+export type Post = {
   title: string;
   content: string;
   created: Date | FieldValue;
+  label?: string[];
 };
 
 describe('FirestoreFullTextSearch:english', () => {

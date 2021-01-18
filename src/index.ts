@@ -1,8 +1,10 @@
-import type {
+import {
   CollectionReference,
   DocumentData,
   DocumentReference,
+  FieldPath,
   Firestore,
+  WhereFilterOp,
   WriteBatch,
 } from '@google-cloud/firestore';
 import type {LanguageID} from './tokenizer';
@@ -21,7 +23,12 @@ export type SetOptions = {
 };
 
 export type SearchOptions = {
-  limit: number;
+  limit?: number;
+  typeHints?: {[key: string]: TypeHint};
+};
+
+export type TypeHint = {
+  type: 'string' | 'array';
 };
 
 const tracer = trace.getTracer('firestore-full-text-search');
@@ -112,31 +119,83 @@ export default class FirestoreFullTextSearch {
       lang,
     });
 
-    let query: SearchQuery;
+    let searchQuery: SearchQuery;
     if (typeof stringOrQuery === 'string') {
-      query = parseQuery(stringOrQuery);
+      searchQuery = parseQuery(stringOrQuery);
     } else {
-      query = stringOrQuery;
+      searchQuery = stringOrQuery;
     }
 
-    const results: {[key: string]: DocumentReference} = {};
-    for (const keyword of query.keywords) {
+    let limit = options?.limit ?? 500;
+    if (limit <= 0) {
+      limit = 0;
+    } else if (limit >= 500) {
+      limit = 500;
+    }
+
+    let results: {[key: string]: DocumentReference} = {};
+    for (const keyword of searchQuery.keywords) {
       const tokens = tokenize(lang, keyword);
       for (const token of tokens) {
         const docsRef = this.#ref.doc(token.word).collection('docs');
-        const query = docsRef.limit(options?.limit ?? 500);
+
+        const query = docsRef.limit(limit);
+
         const snap = await query.get();
         for (const doc of snap.docs) {
           const data = doc.data() as FieldEntity;
           results[data.ref.id] = data.ref;
         }
       }
+
       searchTokenCounter
         .bind({
           index: this.#ref.path,
           lang,
         })
         .add(tokens.length);
+    }
+
+    const resultsVals = Object.values(results);
+    if (resultsVals.length >= 1 && searchQuery.fields) {
+      const res: {[key: string]: DocumentReference} = {};
+
+      let query = this.#db.collection(resultsVals[0].parent.path).limit(limit);
+      for (const ref of resultsVals) {
+        query.where(FieldPath.documentId(), '==', ref.id);
+      }
+
+      const typeHints = options?.typeHints;
+
+      // TODO: @k2wanko refactoring.
+      for (const field of searchQuery.fields) {
+        if (typeHints) {
+          const typeHint = typeHints[field.name];
+          if (typeHint) {
+            switch (typeHint.type) {
+              case 'array':
+                if (field.operator === '==') {
+                  query = query.where(field.name, 'array-contains-any', [
+                    field.value,
+                  ]);
+                } else {
+                  query = query.where(field.name, field.operator, field.value);
+                }
+                break;
+              default:
+                query = query.where(field.name, field.operator, field.value);
+            }
+            continue;
+          }
+        }
+        query = query.where(field.name, field.operator, field.value);
+      }
+
+      const snap = await query.get();
+      for (const doc of snap.docs) {
+        res[doc.id] = doc.ref;
+      }
+      results = res;
     }
 
     span.end();

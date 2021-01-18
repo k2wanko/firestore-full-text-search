@@ -1,4 +1,14 @@
+import admin from 'firebase-admin';
+import FirestoreFullTextSearch from './index';
 import {parseQuery, SearchQuery} from './query';
+import {Post} from './index.spec';
+
+process.env.FIRESTORE_EMULATOR_HOST =
+  process.env.FIRESTORE_EMULATOR_HOST || 'localhost:5000';
+
+admin.initializeApp({
+  projectId: 'test',
+});
 
 describe('parseQuery', () => {
   it('nothing', () => {
@@ -46,7 +56,7 @@ describe('parseQuery', () => {
     const want: SearchQuery = {
       keywords: ['dog'],
       fields: [
-        {name: 'label', type: 'string', operator: 'IN', value: 'welsh corgi'},
+        {name: 'label', type: 'string', operator: '==', value: 'welsh corgi'},
       ],
     };
     expect(res).toStrictEqual(want);
@@ -57,7 +67,7 @@ describe('parseQuery', () => {
     const want: SearchQuery = {
       keywords: ['dog'],
       fields: [
-        {name: 'label', type: 'string', operator: 'NOT', value: 'welsh corgi'},
+        {name: 'label', type: 'string', operator: '!=', value: 'welsh corgi'},
       ],
     };
     expect(res).toStrictEqual(want);
@@ -74,4 +84,43 @@ describe('parseQuery', () => {
   //     };
   //     expect(res).toStrictEqual(want);
   //   });
+});
+
+describe('querySearch', () => {
+  it('string:field-in', async () => {
+    const db = admin.firestore();
+
+    const postsRef = db.collection('posts');
+    const postData: Post = {
+      title: 'Test Post',
+      content: 'Hello',
+      created: admin.firestore.FieldValue.serverTimestamp(),
+      label: ['draft'],
+    };
+    const postData2: Post = {
+      title: 'Test Post',
+      content: 'Hello',
+      created: admin.firestore.FieldValue.serverTimestamp(),
+      label: ['published'],
+    };
+
+    const docRef = postsRef.doc('bF7lfaw8gOlkAPlqGzTHh');
+    const docRef2 = postsRef.doc('cF7lfawhaOlkAPlqGzTHh');
+
+    const batch = db.batch();
+    batch.set(docRef, postData);
+    batch.set(docRef2, postData2);
+
+    const indexRef = db.collection('index');
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    await fullTextSearch.set('en', docRef, {batch, data: postData});
+    await fullTextSearch.set('en', docRef2, {batch, data: postData2});
+
+    await batch.commit();
+
+    const res = await fullTextSearch.search('en', 'hello label:published', {
+      typeHints: {label: {type: 'array'}},
+    });
+    console.log(res);
+  });
 });

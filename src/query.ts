@@ -1,9 +1,9 @@
-export type Operator = 'IN' | 'NOT';
+import type {WhereFilterOp} from '@google-cloud/firestore';
 
 export type FieldType = FieldStringType;
 export type FieldStringType = {
   type: 'string';
-  operator: Operator;
+  operator: WhereFilterOp;
   value: string;
 } & FieldTypeBase;
 export type FieldTypeBase = {name: string; type: 'string'};
@@ -35,10 +35,10 @@ export function parseQuery(query: string): SearchQuery {
     }
 
     let [name, value] = term.split(':');
-    let operator: Operator = 'IN';
+    let operator: WhereFilterOp = '==';
     if (name.startsWith('-')) {
       name = name.slice(1, name.length);
-      operator = 'NOT';
+      operator = '!=';
     }
     value = value.replace(/"/g, '');
     fields.push({
