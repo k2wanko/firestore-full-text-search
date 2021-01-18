@@ -1,12 +1,20 @@
-import type {WhereFilterOp} from '@google-cloud/firestore';
+export type FieldType = FieldStringType | FieldNumberType;
 
-export type FieldType = FieldStringType;
 export type FieldStringType = {
   type: 'string';
-  operator: WhereFilterOp;
+  operator: FilterOp;
   value: string;
 } & FieldTypeBase;
-export type FieldTypeBase = {name: string; type: 'string'};
+
+export type FieldNumberType = {
+  type: 'number';
+  operator: FilterOp;
+  value: number;
+} & FieldTypeBase;
+
+export type FilterOp = '==' | '!=' | '>' | '>=' | '<' | '<=';
+
+export type FieldTypeBase = {name: string};
 
 export type SearchQuery = {
   keywords: string[];
@@ -35,11 +43,38 @@ export function parseQuery(query: string): SearchQuery {
     }
 
     let [name, value] = term.split(':');
-    let operator: WhereFilterOp = '==';
+    let operator: FilterOp = '==';
     if (name.startsWith('-')) {
       name = name.slice(1, name.length);
       operator = '!=';
     }
+
+    let [numOp, numValOrNAN] = [
+      value.slice(0, 1),
+      value.slice(1, value.length),
+    ];
+    if (numValOrNAN.startsWith('=')) {
+      numOp += '=';
+      numValOrNAN = numValOrNAN.slice(1, numValOrNAN.length);
+    }
+    const numberVal = Number.parseInt(numValOrNAN);
+    if (!Number.isNaN(numberVal)) {
+      switch (numOp) {
+        case '>':
+        case '<':
+        case '>=':
+        case '<=':
+          fields.push({
+            name,
+            type: 'number',
+            operator: numOp,
+            value: numberVal,
+          });
+          continue;
+        default:
+      }
+    }
+
     value = value.replace(/"/g, '');
     fields.push({
       name,

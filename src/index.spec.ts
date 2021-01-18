@@ -33,6 +33,13 @@ export type Post = {
   label?: string[];
 };
 
+export type Animal = {
+  type: string;
+  class: string;
+  description: string;
+  like: number;
+};
+
 describe('FirestoreFullTextSearch:english', () => {
   it('set:simple', async () => {
     const db = admin.firestore();

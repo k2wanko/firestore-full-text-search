@@ -24,12 +24,13 @@ export type SetOptions = {
 
 export type SearchOptions = {
   limit?: number;
-  typeHints: {[key: string]: TypeHint};
 };
 
-export type TypeHint = {
-  type: 'string' | 'array';
+export type FieldTypeEntity = {
+  type: FieldType;
 };
+
+export type FieldType = 'string' | 'array' | 'number';
 
 const tracer = trace.getTracer('firestore-full-text-search');
 
@@ -93,6 +94,9 @@ export default class FirestoreFullTextSearch {
 
       const tokens = tokenize(lang, vaule);
       for (const token of tokens) {
+        if (!token.word) {
+          continue;
+        }
         const docRef = this.#ref
           .doc('v1')
           .collection('words')
@@ -100,17 +104,21 @@ export default class FirestoreFullTextSearch {
           .collection('docs')
           .doc(`${doc.id}.${fieldName}`);
         if (fields) {
-          const fieldTypes: {[key: string]: 'string' | 'array'} = {};
+          const fieldTypes: {[key: string]: FieldType} = {};
           const fieldData: {[key: string]: unknown} = {};
           const _fieldData = fields.reduce((p, name) => {
             const val = _data[name];
             if (Array.isArray(val)) {
               fieldTypes[name] = 'array';
-              p[name] = _data[name];
+              p[name] = val.sort();
             } else {
               switch (typeof val) {
                 case 'string':
                   fieldTypes[name] = 'string';
+                  p[name] = _data[name];
+                  break;
+                case 'number':
+                  fieldTypes[name] = 'number';
                   p[name] = _data[name];
                   break;
                 default:
@@ -122,8 +130,7 @@ export default class FirestoreFullTextSearch {
           for (const [name, type] of Object.entries(fieldTypes)) {
             batch.set(this.#ref.doc('v1').collection('fields').doc(name), {
               type,
-              ref: doc,
-            });
+            } as FieldTypeEntity);
           }
           batch.set(docRef, {
             __positions: new Uint8Array(token.positions),
@@ -186,7 +193,7 @@ export default class FirestoreFullTextSearch {
     }
 
     const fields = searchQuery?.fields;
-    type fieldInfo = {name: string; type: 'string' | 'array'};
+    type fieldInfo = {name: string; type: FieldType};
     let fieldInfos: fieldInfo[] | null = null;
     if (fields) {
       const snap = await this.#db.getAll(
@@ -222,9 +229,19 @@ export default class FirestoreFullTextSearch {
                 query = query.where(field.name, field.operator, field.value);
                 break;
               case 'array':
-                query = query.where(field.name, 'array-contains-any', [
-                  field.value,
-                ]);
+                switch (field.operator) {
+                  case '==':
+                    query = query.where(field.name, 'in', [
+                      [field.value].sort(),
+                    ]);
+                    break;
+                  case '!=':
+                    query = query.where(field.name, 'not-in', [
+                      [field.value].sort(),
+                    ]);
+                    break;
+                  default:
+                }
                 break;
               default:
                 query = query.where(field.name, field.operator, field.value);
