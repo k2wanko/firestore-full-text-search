@@ -18,7 +18,7 @@ export type FieldEntity = {
 export type SetOptions = {
   batch?: WriteBatch;
   data?: DocumentData;
-  fieldMask?: string[];
+  indexMask?: string[];
   fields?: string[];
 };
 
@@ -76,14 +76,14 @@ export default class FirestoreFullTextSearch {
     }
 
     const batch = options?.batch ?? this.#db.batch();
-    const fieldMask = options?.fieldMask;
+    const indexMask = options?.indexMask;
     const fields = options?.fields;
 
     let writeCount = 0;
     let writeTokenCount = 0;
     for (const [fieldName, vaule] of Object.entries(data)) {
-      if (fieldMask) {
-        if (!fieldMask.includes(fieldName)) {
+      if (indexMask) {
+        if (!indexMask.includes(fieldName)) {
           continue;
         }
       }

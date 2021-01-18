@@ -160,19 +160,19 @@ describe('querySearch', () => {
     await fullTextSearch.set('en', docRef, {
       batch,
       data: postData,
-      fieldMask: ['content'],
+      indexMask: ['content'],
       fields: ['label'],
     });
     await fullTextSearch.set('en', docRef2, {
       batch,
       data: postData2,
-      fieldMask: ['content'],
+      indexMask: ['content'],
       fields: ['label'],
     });
     await fullTextSearch.set('en', docRef3, {
       batch,
       data: postData3,
-      fieldMask: ['content'],
+      indexMask: ['content'],
       fields: ['label'],
     });
 
@@ -214,7 +214,7 @@ describe('querySearch', () => {
       await fullTextSearch.set('en', dogRef, {
         data,
         batch,
-        fieldMask: ['description'],
+        indexMask: ['description'],
         fields: ['like'],
       });
     }
