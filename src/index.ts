@@ -23,6 +23,12 @@ export type SetOptions = {
   fields?: string[];
 };
 
+export type DeleteOptions = {
+  batch?: WriteBatch;
+  data?: DocumentData;
+  indexMask?: string[];
+};
+
 export type SearchOptions = {
   limit?: number;
 };
@@ -178,6 +184,71 @@ export default class FirestoreFullTextSearch {
         lang,
       })
       .add(writeTokenCount);
+    span.end();
+  }
+
+  async delete(
+    lang: LanguageID,
+    doc: DocumentReference,
+    options?: DeleteOptions
+  ) {
+    const span = tracer.startSpan('delete');
+    span.setAttributes({
+      index: this.#ref.path,
+      doc: doc.path,
+      lang,
+    });
+
+    let data = options?.data;
+    if (!data) {
+      const snap = await doc.get();
+      if (!snap.exists) {
+        throw new Error('Document does not exist.');
+      }
+      data = snap.data() as DocumentData; // exists checked.
+    }
+
+    const _data = data;
+    if (!_data) {
+      throw new Error('Document is empty');
+    }
+
+    const batch = options?.batch ?? this.#db.batch();
+    const indexMask = options?.indexMask;
+
+    for (const [fieldName, vaule] of Object.entries(data)) {
+      if (indexMask) {
+        if (!indexMask.includes(fieldName)) {
+          continue;
+        }
+      }
+
+      if (fieldName.startsWith('__')) {
+        continue;
+      }
+
+      if (typeof vaule !== 'string') {
+        continue;
+      }
+
+      const tokens = tokenize(lang, vaule);
+      for (const token of tokens) {
+        if (!token.word) {
+          continue;
+        }
+        const docRef = this.#wordsRef
+          .doc(token.word)
+          .collection('docs')
+          .doc(`${doc.id}.${fieldName}`);
+
+        batch.delete(docRef);
+      }
+    }
+
+    if (!options?.batch) {
+      await batch.commit();
+    }
+
     span.end();
   }
 

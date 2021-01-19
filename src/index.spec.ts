@@ -130,3 +130,44 @@ describe('FirestoreFullTextSearch:english', () => {
     expect(results.length).toBe(0);
   });
 });
+
+describe('FirestoreFullTextSearch', () => {
+  const db = admin.firestore();
+  it('delete:document', async () => {
+    const postsRef = db.collection('posts');
+    const postData: Post = {
+      title: "What's Firestore Full-Text Search?",
+      content:
+        'Firestore Full-Text Search provides a Firestore-specific full-text search function. It runs on Cloud Functions and has excellent performance.',
+      created: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    const docRef = postsRef.doc('post1');
+    await docRef.set(postData);
+    console.log({docID: docRef.id});
+
+    const indexRef = db.collection('index_delete_test');
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    await fullTextSearch.set('en', docRef);
+
+    const word = 'search';
+    const wants = ['title', 'content'];
+    for (const field of wants) {
+      const contentRef = indexRef.doc(
+        `/v1/words/${word}/docs/${docRef.id}.${field}`
+      );
+      const contentSnap = await contentRef.get();
+      expect(contentSnap.exists).toBe(true);
+    }
+
+    await fullTextSearch.delete('en', docRef);
+
+    for (const field of wants) {
+      const contentRef = indexRef.doc(
+        `/v1/words/${word}/docs/${docRef.id}.${field}`
+      );
+      const contentSnap = await contentRef.get();
+      expect(contentSnap.exists).toBe(false);
+    }
+  });
+});
