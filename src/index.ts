@@ -1,7 +1,8 @@
-import type {
+import {
   CollectionReference,
   DocumentData,
   DocumentReference,
+  FieldValue,
   Firestore,
   WriteBatch,
 } from '@google-cloud/firestore';
@@ -30,7 +31,7 @@ export type FieldTypeEntity = {
   type: FieldType;
 };
 
-export type FieldType = 'string' | 'array' | 'number';
+export type FieldType = 'string' | 'array' | 'number' | 'date';
 
 const tracer = trace.getTracer('firestore-full-text-search');
 
@@ -114,17 +115,28 @@ export default class FirestoreFullTextSearch {
               fieldTypes[name] = 'array';
               p[name] = val.sort();
             } else {
-              switch (typeof val) {
-                case 'string':
-                  fieldTypes[name] = 'string';
-                  p[name] = _data[name];
-                  break;
-                case 'number':
-                  fieldTypes[name] = 'number';
-                  p[name] = _data[name];
-                  break;
-                default:
-                  throw new Error(`Unsupport filed type ${typeof val}`);
+              if (val instanceof Date) {
+                fieldTypes[name] = 'date';
+                p[name] = val;
+              } else if (
+                val instanceof FieldValue &&
+                val.isEqual(FieldValue.serverTimestamp())
+              ) {
+                fieldTypes[name] = 'date';
+                p[name] = val;
+              } else {
+                switch (typeof val) {
+                  case 'string':
+                    fieldTypes[name] = 'string';
+                    p[name] = _data[name];
+                    break;
+                  case 'number':
+                    fieldTypes[name] = 'number';
+                    p[name] = _data[name];
+                    break;
+                  default:
+                    throw new Error(`Unsupport filed type ${typeof val}`);
+                }
               }
             }
             return p;

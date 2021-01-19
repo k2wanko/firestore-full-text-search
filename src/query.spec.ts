@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import {DateTime} from 'luxon';
 import FirestoreFullTextSearch from './index';
 import {parseQuery, SearchQuery} from './query';
 import {Post, Animal} from './index.spec';
@@ -120,6 +121,70 @@ describe('parseQuery', () => {
     };
     expect(res).toStrictEqual(want);
   });
+
+  it('date:greater-than', () => {
+    const res = parseQuery('hello created:>2021-01-01');
+    const want: SearchQuery = {
+      keywords: ['hello'],
+      fields: [
+        {
+          name: 'created',
+          type: 'date',
+          operator: '>',
+          value: DateTime.fromISO('2021-01-01').toJSDate(),
+        },
+      ],
+    };
+    expect(res).toStrictEqual(want);
+  });
+
+  it('date:greater-than-or-equal', () => {
+    const res = parseQuery('hello created:>=2021-01-01');
+    const want: SearchQuery = {
+      keywords: ['hello'],
+      fields: [
+        {
+          name: 'created',
+          type: 'date',
+          operator: '>=',
+          value: DateTime.fromISO('2021-01-01').toJSDate(),
+        },
+      ],
+    };
+    expect(res).toStrictEqual(want);
+  });
+
+  it('date:less-than', () => {
+    const res = parseQuery('hello created:<2021-01-01');
+    const want: SearchQuery = {
+      keywords: ['hello'],
+      fields: [
+        {
+          name: 'created',
+          type: 'date',
+          operator: '<',
+          value: DateTime.fromISO('2021-01-01').toJSDate(),
+        },
+      ],
+    };
+    expect(res).toStrictEqual(want);
+  });
+
+  it('date:less-than-or-equal', () => {
+    const res = parseQuery('hello created:<=2021-01-01');
+    const want: SearchQuery = {
+      keywords: ['hello'],
+      fields: [
+        {
+          name: 'created',
+          type: 'date',
+          operator: '<=',
+          value: DateTime.fromISO('2021-01-01').toJSDate(),
+        },
+      ],
+    };
+    expect(res).toStrictEqual(want);
+  });
 });
 
 describe('querySearch', () => {
@@ -130,19 +195,19 @@ describe('querySearch', () => {
     const postData: Post = {
       title: 'Test Post',
       content: 'Hello',
-      created: admin.firestore.FieldValue.serverTimestamp(),
+      created: DateTime.fromISO('2021-01-01').toJSDate(),
       label: ['draft'],
     };
     const postData2: Post = {
       title: 'Test Post',
       content: 'Hello',
-      created: admin.firestore.FieldValue.serverTimestamp(),
+      created: DateTime.fromISO('2021-01-02').toJSDate(),
       label: ['published'],
     };
     const postData3: Post = {
       title: 'Test Post 2',
       content: 'Hello World',
-      created: admin.firestore.FieldValue.serverTimestamp(),
+      created: DateTime.fromISO('2021-02-01').toJSDate(),
       label: ['published'],
     };
 
@@ -161,19 +226,19 @@ describe('querySearch', () => {
       batch,
       data: postData,
       indexMask: ['content'],
-      fields: ['label'],
+      fields: ['label', 'created'],
     });
     await fullTextSearch.set('en', docRef2, {
       batch,
       data: postData2,
       indexMask: ['content'],
-      fields: ['label'],
+      fields: ['label', 'created'],
     });
     await fullTextSearch.set('en', docRef3, {
       batch,
       data: postData3,
       indexMask: ['content'],
-      fields: ['label'],
+      fields: ['label', 'created'],
     });
 
     await batch.commit();
@@ -273,5 +338,45 @@ describe('querySearch', () => {
     expect(res.length >= 2).toBe(true);
     expect(res[0].id).toBe('border collie');
     expect(res[1].id).toBe('corgi');
+  });
+
+  it('date:greater-than', async () => {
+    const db = admin.firestore();
+    const indexRef = db.collection('index');
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    const res = await fullTextSearch.search('en', 'hello created:>2021-01-01');
+    expect(res.length >= 2).toBe(true);
+    expect(res[0].id).toBe('cF7lfawhaOlkAPlqGzTHh');
+    expect(res[1].id).toBe('dF7lfawhaOlkAPlqGzTHh');
+  });
+
+  it('date:greater-than-or-equal', async () => {
+    const db = admin.firestore();
+    const indexRef = db.collection('index');
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    const res = await fullTextSearch.search('en', 'hello created:>=2021-01-01');
+    expect(res.length >= 3).toBe(true);
+    expect(res[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
+    expect(res[1].id).toBe('cF7lfawhaOlkAPlqGzTHh');
+    expect(res[2].id).toBe('dF7lfawhaOlkAPlqGzTHh');
+  });
+
+  it('date:less-than', async () => {
+    const db = admin.firestore();
+    const indexRef = db.collection('index');
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    const res = await fullTextSearch.search('en', 'hello created:<2021-01-02');
+    expect(res.length === 1).toBe(true);
+    expect(res[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
+  });
+
+  it('date:less-than-or-equal', async () => {
+    const db = admin.firestore();
+    const indexRef = db.collection('index');
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    const res = await fullTextSearch.search('en', 'hello created:<=2021-01-02');
+    expect(res.length === 2).toBe(true);
+    expect(res[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
+    expect(res[1].id).toBe('cF7lfawhaOlkAPlqGzTHh');
   });
 });

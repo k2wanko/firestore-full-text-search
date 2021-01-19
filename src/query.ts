@@ -1,4 +1,6 @@
-export type FieldType = FieldStringType | FieldNumberType;
+import {DateTime} from 'luxon';
+
+export type FieldType = FieldStringType | FieldNumberType | FieldDateType;
 
 export type FieldStringType = {
   type: 'string';
@@ -10,6 +12,12 @@ export type FieldNumberType = {
   type: 'number';
   operator: FilterOp;
   value: number;
+} & FieldTypeBase;
+
+export type FieldDateType = {
+  type: 'date';
+  operator: FilterOp;
+  value: Date;
 } & FieldTypeBase;
 
 export type FilterOp = '==' | '!=' | '>' | '>=' | '<' | '<=';
@@ -49,16 +57,16 @@ export function parseQuery(query: string): SearchQuery {
       operator = '!=';
     }
 
-    let [numOp, numValOrNAN] = [
+    let [numOp, numValOrDateOrStr] = [
       value.slice(0, 1),
       value.slice(1, value.length),
     ];
-    if (numValOrNAN.startsWith('=')) {
+    if (numValOrDateOrStr.startsWith('=')) {
       numOp += '=';
-      numValOrNAN = numValOrNAN.slice(1, numValOrNAN.length);
+      numValOrDateOrStr = numValOrDateOrStr.slice(1, numValOrDateOrStr.length);
     }
-    const numberVal = Number.parseInt(numValOrNAN);
-    if (!Number.isNaN(numberVal)) {
+    const numberVal = Number.parseInt(numValOrDateOrStr);
+    if (!Number.isNaN(numberVal) && !numValOrDateOrStr.includes('-')) {
       switch (numOp) {
         case '>':
         case '<':
@@ -69,6 +77,24 @@ export function parseQuery(query: string): SearchQuery {
             type: 'number',
             operator: numOp,
             value: numberVal,
+          });
+          continue;
+        default:
+      }
+    }
+
+    const datetime = DateTime.fromISO(numValOrDateOrStr);
+    if (datetime.invalidReason === null) {
+      switch (numOp) {
+        case '>':
+        case '<':
+        case '>=':
+        case '<=':
+          fields.push({
+            name,
+            type: 'date',
+            operator: numOp,
+            value: datetime.toJSDate(),
           });
           continue;
         default:
