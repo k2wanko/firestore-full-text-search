@@ -2,10 +2,10 @@ import {
   CollectionReference,
   DocumentData,
   DocumentReference,
-  FieldValue,
   Firestore,
   WriteBatch,
 } from '@google-cloud/firestore';
+import {FieldValue} from '@google-cloud/firestore';
 import type {LanguageID} from './tokenizer';
 import tokenize from './tokenizer/tokenize';
 import {trace, metrics} from '@opentelemetry/api';
