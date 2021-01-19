@@ -26,10 +26,18 @@ admin.initializeApp({
   projectId: 'test',
 });
 
-type Post = {
+export type Post = {
   title: string;
   content: string;
   created: Date | FieldValue;
+  label?: string[];
+};
+
+export type Animal = {
+  type: string;
+  class: string;
+  description: string;
+  like: number;
 };
 
 describe('FirestoreFullTextSearch:english', () => {
@@ -55,7 +63,9 @@ describe('FirestoreFullTextSearch:english', () => {
     const word = 'search';
     const wants = ['title', 'content'];
     for (const field of wants) {
-      const contentRef = indexRef.doc(`/${word}/docs/${docRef.id}.${field}`);
+      const contentRef = indexRef.doc(
+        `/v1/words/${word}/docs/${docRef.id}.${field}`
+      );
       const contentSnap = await contentRef.get();
       expect(contentSnap.exists).toBe(true);
     }
@@ -86,7 +96,9 @@ describe('FirestoreFullTextSearch:english', () => {
     const word = 'firebas';
     const wants = ['title', 'content'];
     for (const field of wants) {
-      const contentRef = indexRef.doc(`/${word}/docs/${docRef.id}.${field}`);
+      const contentRef = indexRef.doc(
+        `/v1/words/${word}/docs/${docRef.id}.${field}`
+      );
       const contentSnap = await contentRef.get();
       expect(contentSnap.exists).toBe(true);
     }
@@ -99,6 +111,15 @@ describe('FirestoreFullTextSearch:english', () => {
     const results = await fullTextSearch.search('en', 'firestore');
     expect(results.length).toBe(1);
     expect(results[0].id).toBe('gF4lmS8gOlkAPlqGzTHh');
+  });
+
+  it('search:double-keywords', async () => {
+    const db = admin.firestore();
+    const indexRef = db.collection('index_simple');
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    const results = await fullTextSearch.search('en', 'firebase firestore');
+
+    expect(results.length).toBe(2);
   });
 
   it('search:nothing', async () => {
