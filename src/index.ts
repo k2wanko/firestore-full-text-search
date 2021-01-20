@@ -141,7 +141,7 @@ export default class FirestoreFullTextSearch {
         const docRef = wordRef.collection('docs').doc(`${doc.id}.${fieldName}`);
         const res = await docRef.get();
         if (!res.exists) {
-          newDocCount += 1;
+          newDocCount = 1;
           newWordCountMap.set(word, 1);
         }
       }
@@ -329,7 +329,7 @@ export default class FirestoreFullTextSearch {
 
         batch.delete(docRef);
         batch.set(wordRef, {count: FieldValue.increment(-1)}, {merge: true});
-        docCount += 1;
+        docCount = 1;
       }
     }
 
