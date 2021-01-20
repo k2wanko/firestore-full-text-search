@@ -6,14 +6,24 @@ import type {
   WriteBatch,
 } from '@google-cloud/firestore';
 import {FieldValue} from '@google-cloud/firestore';
-import type {LanguageID} from './tokenizer';
+import type {LanguageID, Token} from './tokenizer';
 import tokenize from './tokenizer/tokenize';
 import {trace, metrics} from '@opentelemetry/api';
 import {parseQuery, SearchQuery} from './query';
 
 export type FieldEntity = {
   __positions: Buffer;
+  __tf: number;
+  __score: number; // tf * idf
   __ref: DocumentReference;
+};
+
+export type WordEntity = {
+  idf: number;
+};
+
+export type CounterEntity = {
+  count: number;
 };
 
 export type SetOptions = {
@@ -86,9 +96,18 @@ export default class FirestoreFullTextSearch {
     const indexMask = options?.indexMask;
     const fields = options?.fields;
 
+    const allDocCount = await this.#ref
+      .doc('v1')
+      .get()
+      .then(res => (res.exists ? res.data()?.count ?? 0 : 0));
+
+    let newDocCount = 0;
+    const newWordCountMap = new Map<string, number>();
+    const tokensMap = new Map<string, Token[]>();
+    const targetFields = new Set<string>();
     let writeCount = 0;
     let writeTokenCount = 0;
-    for (const [fieldName, vaule] of Object.entries(data)) {
+    for (const [fieldName, value] of Object.entries(data)) {
       if (indexMask) {
         if (!indexMask.includes(fieldName)) {
           continue;
@@ -99,19 +118,55 @@ export default class FirestoreFullTextSearch {
         continue;
       }
 
-      if (typeof vaule !== 'string') {
+      if (typeof value !== 'string') {
+        continue;
+      }
+      targetFields.add(fieldName);
+    }
+
+    for (const fieldName of targetFields) {
+      const value = data[fieldName];
+      if (typeof value !== 'string') {
+        continue;
+      }
+      const tokens = tokenize(lang, value);
+      tokensMap.set(fieldName, tokens);
+      for (const token of tokens) {
+        const word = token.word;
+        if (!word) {
+          continue;
+        }
+
+        const wordRef = this.#wordsRef.doc(word);
+        const docRef = wordRef.collection('docs').doc(`${doc.id}.${fieldName}`);
+        const res = await docRef.get();
+        if (!res.exists) {
+          newDocCount += 1;
+          newWordCountMap.set(word, 1);
+        }
+      }
+    }
+
+    for (const fieldName of targetFields) {
+      const value = data[fieldName];
+      if (typeof value !== 'string') {
         continue;
       }
 
-      const tokens = tokenize(lang, vaule);
+      const tokens = tokensMap.get(fieldName);
+      if (!tokens) {
+        throw new Error('Not found tokens');
+      }
       for (const token of tokens) {
-        if (!token.word) {
+        const word = token.word;
+        if (!word) {
           continue;
         }
-        const docRef = this.#wordsRef
-          .doc(token.word)
-          .collection('docs')
-          .doc(`${doc.id}.${fieldName}`);
+        const wordRef = this.#wordsRef.doc(word);
+        const wordDocCount = await wordRef
+          .get()
+          .then(res => (res.exists ? res.data()?.count ?? 0 : 0));
+        const docRef = wordRef.collection('docs').doc(`${doc.id}.${fieldName}`);
         if (fields) {
           const fieldTypes: {[key: string]: FieldType} = {};
           const fieldData: {[key: string]: unknown} = {};
@@ -154,19 +209,50 @@ export default class FirestoreFullTextSearch {
           }
           batch.set(docRef, {
             __positions: new Uint8Array(token.positions),
+            __tf: token.positions.length / tokens.length,
+            __score:
+              (token.positions.length / tokens.length) *
+              Math.log(
+                (allDocCount + newDocCount) /
+                  (wordDocCount + (newWordCountMap.get(word) ?? 0))
+              ),
             __ref: doc,
             ..._fieldData,
           });
         } else {
           batch.set(docRef, {
             __positions: new Uint8Array(token.positions),
+            __tf: token.positions.length / tokens.length,
+            __score:
+              (token.positions.length / tokens.length) *
+              Math.log(
+                (allDocCount + newDocCount) /
+                  (wordDocCount + (newWordCountMap.get(word) ?? 0))
+              ),
             __ref: doc,
           });
         }
+
+        if (newWordCountMap.has(word)) {
+          batch.set(
+            wordRef,
+            {count: FieldValue.increment(newWordCountMap.get(word) ?? 0)},
+            {merge: true}
+          );
+        }
         writeCount += 1;
       }
+
       writeTokenCount += tokens.length;
     }
+
+    batch.set(
+      this.#ref.doc('v1'),
+      {
+        count: FieldValue.increment(newDocCount),
+      },
+      {merge: true}
+    );
 
     if (!options?.batch) {
       await batch.commit();
@@ -215,6 +301,7 @@ export default class FirestoreFullTextSearch {
 
     const batch = options?.batch ?? this.#db.batch();
     const indexMask = options?.indexMask;
+    let docCount = 0;
 
     for (const [fieldName, vaule] of Object.entries(data)) {
       if (indexMask) {
@@ -233,17 +320,24 @@ export default class FirestoreFullTextSearch {
 
       const tokens = tokenize(lang, vaule);
       for (const token of tokens) {
-        if (!token.word) {
+        const word = token.word;
+        if (!word) {
           continue;
         }
-        const docRef = this.#wordsRef
-          .doc(token.word)
-          .collection('docs')
-          .doc(`${doc.id}.${fieldName}`);
+        const wordRef = this.#wordsRef.doc(word);
+        const docRef = wordRef.collection('docs').doc(`${doc.id}.${fieldName}`);
 
         batch.delete(docRef);
+        batch.set(wordRef, {count: FieldValue.increment(-1)}, {merge: true});
+        docCount += 1;
       }
     }
+
+    batch.set(
+      this.#ref.doc('v1'),
+      {count: FieldValue.increment(docCount * -1)},
+      {merge: true}
+    );
 
     if (!options?.batch) {
       await batch.commit();
@@ -329,7 +423,9 @@ export default class FirestoreFullTextSearch {
         }
 
         const snap = await query.get();
-        for (const doc of snap.docs) {
+        for (const doc of snap.docs.sort(
+          (a, b) => (b.data()?.__score ?? 0) - (a.data()?.__score ?? 0)
+        )) {
           const data = doc.data() as FieldEntity;
           results[data.__ref.id] = data.__ref;
         }
