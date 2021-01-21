@@ -11,6 +11,7 @@ import tokenize from './tokenizer/tokenize';
 import {trace, metrics} from '@opentelemetry/api';
 import {parseQuery, SearchQuery} from './query';
 import {calcScore} from './sort';
+import {getCount, incrementCounter} from './counter';
 
 export type FieldEntity = {
   __positions: Buffer;
@@ -24,6 +25,10 @@ export type WordEntity = {
 
 export type CounterEntity = {
   count: number;
+};
+
+export type Options = {
+  sharedCounterNum?: number;
 };
 
 export type SetOptions = {
@@ -58,17 +63,21 @@ const documentWriteTokenCounter = meter.createCounter(
 );
 const searchTokenCounter = meter.createCounter('search_token_count');
 
+const defaultSharedCounterNum = 3;
+
 export default class FirestoreFullTextSearch {
   #ref: CollectionReference;
   #db: Firestore;
   #wordsRef: CollectionReference;
   #fieldsRef: CollectionReference;
+  #options?: Options;
 
-  constructor(ref: CollectionReference) {
+  constructor(ref: CollectionReference, options?: Options) {
     this.#ref = ref;
     this.#db = ref.firestore;
     this.#wordsRef = ref.doc('v1').collection('words');
     this.#fieldsRef = ref.doc('v1').collection('fields');
+    this.#options = options;
   }
 
   async set(lang: LanguageID, doc: DocumentReference, options?: SetOptions) {
@@ -96,10 +105,7 @@ export default class FirestoreFullTextSearch {
     const indexMask = options?.indexMask;
     const fields = options?.fields;
 
-    const allDocCount = await this.#ref
-      .doc('v1')
-      .get()
-      .then(res => (res.exists ? res.data()?.count ?? 0 : 0));
+    const allDocCount = await getCount(this.#ref.doc('v1'));
 
     let newDocCount = 0;
     const newWordCountMap = new Map<string, number>();
@@ -163,9 +169,7 @@ export default class FirestoreFullTextSearch {
           continue;
         }
         const wordRef = this.#wordsRef.doc(word);
-        const wordDocCount = await wordRef
-          .get()
-          .then(res => (res.exists ? res.data()?.count ?? 0 : 0));
+        const wordDocCount = await getCount(wordRef);
         const docRef = wordRef.collection('docs').doc(`${doc.id}.${fieldName}`);
         if (fields) {
           const fieldTypes: {[key: string]: FieldType} = {};
@@ -232,6 +236,11 @@ export default class FirestoreFullTextSearch {
         }
 
         if (newWordCountMap.has(word)) {
+          await incrementCounter(
+            wordRef,
+            this.#options?.sharedCounterNum ?? defaultSharedCounterNum,
+            newWordCountMap.get(word) ?? 0
+          );
           batch.set(
             wordRef,
             {count: FieldValue.increment(newWordCountMap.get(word) ?? 0)},
@@ -244,12 +253,10 @@ export default class FirestoreFullTextSearch {
       writeTokenCount += tokens.length;
     }
 
-    batch.set(
+    await incrementCounter(
       this.#ref.doc('v1'),
-      {
-        count: FieldValue.increment(newDocCount),
-      },
-      {merge: true}
+      this.#options?.sharedCounterNum ?? defaultSharedCounterNum,
+      newDocCount
     );
 
     if (!options?.batch) {
@@ -326,15 +333,19 @@ export default class FirestoreFullTextSearch {
         const docRef = wordRef.collection('docs').doc(`${doc.id}.${fieldName}`);
 
         batch.delete(docRef);
-        batch.set(wordRef, {count: FieldValue.increment(-1)}, {merge: true});
+        await incrementCounter(
+          wordRef,
+          this.#options?.sharedCounterNum ?? defaultSharedCounterNum,
+          -1
+        );
         docCount = 1;
       }
     }
 
-    batch.set(
+    await incrementCounter(
       this.#ref.doc('v1'),
-      {count: FieldValue.increment(docCount * -1)},
-      {merge: true}
+      this.#options?.sharedCounterNum ?? defaultSharedCounterNum,
+      docCount * -1
     );
 
     if (!options?.batch) {
