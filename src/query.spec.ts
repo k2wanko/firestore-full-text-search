@@ -346,8 +346,8 @@ describe('querySearch', () => {
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
     const res = await fullTextSearch.search('en', 'hello created:>2021-01-01');
     expect(res.length >= 2).toBe(true);
-    // expect(res[0].id).toBe('cF7lfawhaOlkAPlqGzTHh');
-    // expect(res[1].id).toBe('dF7lfawhaOlkAPlqGzTHh');
+    expect(res[0].id).toBe('cF7lfawhaOlkAPlqGzTHh');
+    expect(res[1].id).toBe('dF7lfawhaOlkAPlqGzTHh');
   });
 
   it('date:greater-than-or-equal', async () => {
@@ -356,9 +356,9 @@ describe('querySearch', () => {
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
     const res = await fullTextSearch.search('en', 'hello created:>=2021-01-01');
     expect(res.length >= 3).toBe(true);
-    // expect(res[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
-    // expect(res[1].id).toBe('cF7lfawhaOlkAPlqGzTHh');
-    // expect(res[2].id).toBe('dF7lfawhaOlkAPlqGzTHh');
+    expect(res[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
+    expect(res[1].id).toBe('cF7lfawhaOlkAPlqGzTHh');
+    expect(res[2].id).toBe('dF7lfawhaOlkAPlqGzTHh');
   });
 
   it('date:less-than', async () => {
@@ -376,7 +376,7 @@ describe('querySearch', () => {
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
     const res = await fullTextSearch.search('en', 'hello created:<=2021-01-02');
     expect(res.length === 2).toBe(true);
-    // expect(res[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
-    // expect(res[1].id).toBe('cF7lfawhaOlkAPlqGzTHh');
+    expect(res[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
+    expect(res[1].id).toBe('cF7lfawhaOlkAPlqGzTHh');
   });
 });

@@ -10,10 +10,10 @@ import type {LanguageID, Token} from './tokenizer';
 import tokenize from './tokenizer/tokenize';
 import {trace, metrics} from '@opentelemetry/api';
 import {parseQuery, SearchQuery} from './query';
+import {calcScore} from './sort';
 
 export type FieldEntity = {
   __positions: Buffer;
-  __tf: number;
   __score: number; // tf * idf
   __ref: DocumentReference;
 };
@@ -209,26 +209,24 @@ export default class FirestoreFullTextSearch {
           }
           batch.set(docRef, {
             __positions: new Uint8Array(token.positions),
-            __tf: token.positions.length / tokens.length,
-            __score:
-              (token.positions.length / tokens.length) *
-              Math.log(
-                (allDocCount + newDocCount) /
-                  (wordDocCount + (newWordCountMap.get(word) ?? 0))
-              ),
+            __score: calcScore(
+              token.positions.length,
+              tokens.length,
+              wordDocCount + (newWordCountMap.get(word) ?? 0),
+              allDocCount + newDocCount
+            ),
             __ref: doc,
             ..._fieldData,
           });
         } else {
           batch.set(docRef, {
             __positions: new Uint8Array(token.positions),
-            __tf: token.positions.length / tokens.length,
-            __score:
-              (token.positions.length / tokens.length) *
-              Math.log(
-                (allDocCount + newDocCount) /
-                  (wordDocCount + (newWordCountMap.get(word) ?? 0))
-              ),
+            __score: calcScore(
+              token.positions.length,
+              tokens.length,
+              wordDocCount + (newWordCountMap.get(word) ?? 0),
+              allDocCount + newDocCount
+            ),
             __ref: doc,
           });
         }
@@ -420,12 +418,12 @@ export default class FirestoreFullTextSearch {
                 query = query.where(field.name, field.operator, field.value);
             }
           }
+        } else {
+          query = query.orderBy('__score', 'desc');
         }
 
         const snap = await query.get();
-        for (const doc of snap.docs.sort(
-          (a, b) => (b.data()?.__score ?? 0) - (a.data()?.__score ?? 0)
-        )) {
+        for (const doc of snap.docs) {
           const data = doc.data() as FieldEntity;
           results[data.__ref.id] = data.__ref;
         }
