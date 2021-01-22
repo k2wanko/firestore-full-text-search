@@ -133,6 +133,58 @@ describe('FirestoreFullTextSearch:english', () => {
 
 describe('FirestoreFullTextSearch', () => {
   const db = admin.firestore();
+
+  beforeAll(async () => {
+    const dogs: {[key: string]: Animal} = {
+      akita: {
+        type: 'dog',
+        class: 'akita',
+        description:
+          'The Akita (秋田犬, Akita-inu, Japanese pronunciation: [akʲita.inɯ]) is a large breed of dog originating from the mountainous regions of northern Japan.',
+        like: 10,
+      },
+      corgi: {
+        type: 'dog',
+        class: 'corgi',
+        description:
+          'The Welsh Corgi (/ˈkɔːrɡi/[5] plural "Corgis" or occasionally the etymologically consistent "Corgwn"; /ˈkɔːrɡuːn/) is a small type of herding dog that originated in Wales.[6]',
+        like: 50,
+      },
+      'border collie': {
+        type: 'dog',
+        class: 'corey',
+        description:
+          'The Border Collie is a working and herding dog breed developed in the Anglo-Scottish border county of Northumberland, for herding livestock, especially sheep.[1]',
+        like: 5,
+      },
+    };
+
+    const batch = db.batch();
+    const indexRef = db.collection('index_dogs_sort');
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    for (const [id, data] of Object.entries(dogs)) {
+      const dogRef = db.collection('dogs').doc(id);
+      batch.set(dogRef, data);
+      await fullTextSearch.set('en', dogRef, {
+        data,
+        batch,
+        indexMask: ['description'],
+        fields: ['like'],
+      });
+    }
+    await batch.commit();
+  });
+
+  it('search:sort', async () => {
+    const indexRef = db.collection('index_dogs_sort');
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    const results = await fullTextSearch.search('en', 'herding');
+    expect(results.length === 2).toBe(true);
+    expect(results[0].id).toBe('border collie');
+    expect(results[1].id).toBe('corgi');
+    // console.log(results.map(res => res.id));
+  });
+
   it('delete:document', async () => {
     const postsRef = db.collection('posts');
     const postData: Post = {

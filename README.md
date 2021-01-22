@@ -49,7 +49,7 @@ const results = await fullTextSearch.search('en', 'firestore');
 - [ ] Japanese Support
 - [x] Implement Query parser
 - [x] Implement Delete document 
-- [ ] Sorting Support
+- [x] Sorting Support
 - [ ] Limit Support
 - [ ] Pagination Support
 - [x] OpenTelemetry Support
