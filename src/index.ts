@@ -239,12 +239,8 @@ export default class FirestoreFullTextSearch {
           await incrementCounter(
             wordRef,
             this.#options?.sharedCounterNum ?? defaultSharedCounterNum,
-            newWordCountMap.get(word) ?? 0
-          );
-          batch.set(
-            wordRef,
-            {count: FieldValue.increment(newWordCountMap.get(word) ?? 0)},
-            {merge: true}
+            newWordCountMap.get(word) ?? 0,
+            {batch}
           );
         }
         writeCount += 1;
@@ -256,7 +252,8 @@ export default class FirestoreFullTextSearch {
     await incrementCounter(
       this.#ref.doc('v1'),
       this.#options?.sharedCounterNum ?? defaultSharedCounterNum,
-      newDocCount
+      newDocCount,
+      {batch}
     );
 
     if (!options?.batch) {
@@ -336,7 +333,8 @@ export default class FirestoreFullTextSearch {
         await incrementCounter(
           wordRef,
           this.#options?.sharedCounterNum ?? defaultSharedCounterNum,
-          -1
+          -1,
+          {batch}
         );
         docCount = 1;
       }
@@ -345,7 +343,8 @@ export default class FirestoreFullTextSearch {
     await incrementCounter(
       this.#ref.doc('v1'),
       this.#options?.sharedCounterNum ?? defaultSharedCounterNum,
-      docCount * -1
+      docCount * -1,
+      {batch}
     );
 
     if (!options?.batch) {
