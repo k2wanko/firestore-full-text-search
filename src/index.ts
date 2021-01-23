@@ -12,6 +12,7 @@ import {trace, metrics} from '@opentelemetry/api';
 import {parseQuery, SearchQuery} from './query';
 import {calcScore} from './sort';
 import {getCount, incrementCounter} from './counter';
+import {WriteBatch2} from './utils/firestore';
 
 export type FieldEntity = {
   __positions: Buffer;
@@ -101,7 +102,7 @@ export default class FirestoreFullTextSearch {
       throw new Error('Document is empty');
     }
 
-    const batch = options?.batch ?? this.#db.batch();
+    const batch = new WriteBatch2(this.#db, {batch: options?.batch});
     const indexMask = options?.indexMask;
     const fields = options?.fields;
 
@@ -301,7 +302,7 @@ export default class FirestoreFullTextSearch {
       throw new Error('Document is empty');
     }
 
-    const batch = options?.batch ?? this.#db.batch();
+    const batch = new WriteBatch2(this.#db, {batch: options?.batch});
     const indexMask = options?.indexMask;
     let docCount = 0;
 
