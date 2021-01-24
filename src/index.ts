@@ -21,7 +21,7 @@ export type FieldEntity = {
 };
 
 export type WordEntity = {
-  idf: number;
+  related: string[];
 };
 
 export type CounterEntity = {
@@ -47,6 +47,11 @@ export type DeleteOptions = {
 
 export type SearchOptions = {
   limit?: number;
+};
+
+export type SearchResult = {
+  hits: DocumentReference[];
+  total: number;
 };
 
 export type FieldTypeEntity = {
@@ -139,7 +144,7 @@ export default class FirestoreFullTextSearch {
       const tokens = tokenize(lang, value);
       tokensMap.set(fieldName, tokens);
       for (const token of tokens) {
-        const word = token.word;
+        const word = token.normalizedWord;
         if (!word) {
           continue;
         }
@@ -165,11 +170,27 @@ export default class FirestoreFullTextSearch {
         throw new Error('Not found tokens');
       }
       for (const token of tokens) {
-        const word = token.word;
+        const word = token.normalizedWord;
         if (!word) {
           continue;
         }
         const wordRef = this.#wordsRef.doc(word);
+        const wordSnap = await wordRef.get();
+        if (wordSnap.exists) {
+          const wordData = wordSnap.data() as WordEntity;
+          batch.set(
+            wordRef,
+            {
+              related: Array.from(
+                new Set(wordData.related.concat([token.word])).keys()
+              ),
+            },
+            {merge: true}
+          );
+        } else {
+          batch.set(wordRef, {related: [token.word]});
+        }
+
         const wordDocCount = await getCount(wordRef);
         const docRef = wordRef.collection('docs').doc(`${doc.id}.${fieldName}`);
         if (fields) {
@@ -257,9 +278,7 @@ export default class FirestoreFullTextSearch {
       {batch}
     );
 
-    if (!options?.batch) {
-      await batch.commit();
-    }
+    await batch.commit();
 
     documentWriteCounter
       .bind({
@@ -323,7 +342,7 @@ export default class FirestoreFullTextSearch {
 
       const tokens = tokenize(lang, vaule);
       for (const token of tokens) {
-        const word = token.word;
+        const word = token.normalizedWord;
         if (!word) {
           continue;
         }
@@ -348,9 +367,7 @@ export default class FirestoreFullTextSearch {
       {batch}
     );
 
-    if (!options?.batch) {
-      await batch.commit();
-    }
+    await batch.commit();
 
     span.end();
   }
@@ -359,7 +376,7 @@ export default class FirestoreFullTextSearch {
     lang: LanguageID,
     stringOrQuery: string | SearchQuery,
     options?: SearchOptions
-  ) {
+  ): Promise<SearchResult> {
     const span = tracer.startSpan('search');
     span.setAttributes({
       index: this.#ref.path,
@@ -391,10 +408,17 @@ export default class FirestoreFullTextSearch {
     }
 
     const results: {[key: string]: DocumentReference} = {};
+    let total = 0;
     for (const keyword of searchQuery.keywords) {
       const tokens = tokenize(lang, keyword);
       for (const token of tokens) {
-        const docsRef = this.#wordsRef.doc(token.word).collection('docs');
+        const wordRef = this.#wordsRef.doc(token.normalizedWord);
+        const count = await getCount(wordRef);
+        if (count === 0) {
+          continue;
+        }
+        total += count;
+        const docsRef = wordRef.collection('docs');
 
         let query = docsRef.limit(limit);
         if (fieldInfos) {
@@ -448,6 +472,10 @@ export default class FirestoreFullTextSearch {
         .add(tokens.length);
     }
     span.end();
-    return Object.values(results);
+    const hits = Object.values(results);
+    return {
+      hits,
+      total,
+    };
   }
 }

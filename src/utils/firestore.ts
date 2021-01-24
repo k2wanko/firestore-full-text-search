@@ -5,6 +5,9 @@ import type {
   SetOptions,
   Precondition,
   WriteResult,
+  Query,
+  CollectionReference,
+  FieldPath,
 } from '@google-cloud/firestore';
 
 export type WriteBatch2Options = {
@@ -39,12 +42,14 @@ function flatDeep(arr: Array<any>, d = 1): Array<any> {
 // Split more than 500 document writes.
 export class WriteBatch2 {
   #db: Firestore;
-  #options?: WriteBatch2Options;
+  #externalBatch: WriteBatch | null;
   #writeDocumentMap = new Map<DocumentReference, WriteData<unknown>>();
+  #commited = false;
 
   constructor(db: Firestore, options?: WriteBatch2Options) {
     this.#db = db;
-    this.#options = options;
+    this.#externalBatch = options?.batch ?? null;
+    this.#commited = false;
   }
 
   create<T>(documentRef: DocumentReference<T>, data: T): WriteBatch2 {
@@ -70,9 +75,13 @@ export class WriteBatch2 {
   }
 
   async commit(): Promise<WriteResult[]> {
+    if (this.#commited) {
+      throw new Error('commited');
+    }
+    this.#commited = true;
     const isSmallDocs = this.#writeDocumentMap.size <= 499;
     let currentBatch = isSmallDocs
-      ? this.#options?.batch ?? this.#db.batch()
+      ? this.#externalBatch ?? this.#db.batch()
       : this.#db.batch();
     const batchs: WriteBatch[] = [currentBatch];
     let i = 0;
@@ -93,7 +102,7 @@ export class WriteBatch2 {
           break;
       }
 
-      if (i % 500) {
+      if (i % 500 === 0) {
         currentBatch = this.#db.batch();
         batchs.push(currentBatch);
       }
@@ -101,11 +110,31 @@ export class WriteBatch2 {
       i++;
     }
 
-    if (isSmallDocs && !!this.#options?.batch) {
+    if (isSmallDocs && this.#externalBatch && batchs.length === 1) {
       return [];
+    }
+
+    if (isSmallDocs && this.#externalBatch) {
+      batchs.shift();
     }
 
     const results = await Promise.all(batchs.map(batch => batch.commit()));
     return flatDeep(results);
   }
+}
+
+export function startsWith(
+  query: Query | CollectionReference,
+  fieldPath: string | FieldPath,
+  value: string
+) {
+  const start = value.slice(0, value.length - 1);
+  const end = value.slice(value.length - 1, value.length);
+  const v = `${start}${String.fromCharCode(end.charCodeAt(0) + 1)}`;
+  console.log({
+    start,
+    end,
+    v,
+  });
+  return query.where(fieldPath, '>=', value).where(fieldPath, '<', v);
 }

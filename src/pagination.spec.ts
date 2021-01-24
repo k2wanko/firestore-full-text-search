@@ -22,11 +22,31 @@ describe('pagination', () => {
       .then(res => res.toString('utf-8'))
       .then(res => JSON.parse(res));
     for (const {title, description} of items) {
+      const batch = db.batch();
       const ref = docs.doc(title);
       const data = {description};
-      await ref.set(data);
-      await fullTextSearch.set('en', ref, {data});
+      await batch.set(ref, data);
+      await fullTextSearch.set('en', ref, {data, batch});
+      await batch.commit();
     }
   });
-  it('basic', async () => {});
+
+  it('basic', async () => {
+    const {hits, total} = await fullTextSearch.search('en', 'member', {
+      limit: 1,
+    });
+    expect(hits.length).toBe(1);
+    expect(hits[0].path).toBe('animals/Cattle');
+    expect(total).toBe(3);
+  });
+
+  // it('startsWith', async () => {
+  //   const wordsRef = index.doc('v1').collection('words');
+  //   const query = startsWith(wordsRef, FieldPath.documentId(), 'a');
+  //   const snap = await query.get();
+  //   console.log({size: snap.size, path: wordsRef.path});
+  //   for (const doc of snap.docs) {
+  //     console.log(doc.id);
+  //   }
+  // });
 });

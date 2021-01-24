@@ -1,23 +1,6 @@
 import admin from 'firebase-admin';
-import FirestoreFullTextSearch from './index';
+import FirestoreFullTextSearch, {WordEntity} from './index';
 import type {FieldValue} from '@google-cloud/firestore';
-import {LogLevel} from '@opentelemetry/core';
-import {NodeTracerProvider} from '@opentelemetry/node';
-import {SimpleSpanProcessor, ConsoleSpanExporter} from '@opentelemetry/tracing';
-import {trace, metrics} from '@opentelemetry/api';
-import {MeterProvider, ConsoleMetricExporter} from '@opentelemetry/metrics';
-
-const provider = new NodeTracerProvider({
-  logLevel: LogLevel.ERROR,
-});
-provider.register();
-provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
-trace.setGlobalTracerProvider(provider);
-metrics.setGlobalMeterProvider(
-  new MeterProvider({
-    exporter: new ConsoleMetricExporter(),
-  })
-);
 
 process.env.FIRESTORE_EMULATOR_HOST =
   process.env.FIRESTORE_EMULATOR_HOST || 'localhost:5000';
@@ -35,7 +18,6 @@ export type Post = {
 
 export type Animal = {
   type: string;
-  class: string;
   description: string;
   like: number;
 };
@@ -54,7 +36,6 @@ describe('FirestoreFullTextSearch:english', () => {
 
     const docRef = postsRef.doc('gF4lmS8gOlkAPlqGzTHh');
     await docRef.set(postData);
-    console.log({docID: docRef.id});
 
     const indexRef = db.collection('index_simple');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
@@ -104,30 +85,63 @@ describe('FirestoreFullTextSearch:english', () => {
     }
   });
 
+  it('set:related', async () => {
+    const db = admin.firestore();
+    const indexRef = db.collection('related');
+    const testData = [
+      {
+        data: {
+          title: "What's JavaScript",
+        },
+      },
+      {
+        data: {
+          title: "What's Javascript",
+        },
+      },
+      {
+        data: {
+          title: "What's javascript",
+        },
+      },
+    ];
+
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    for (const {data} of testData) {
+      await fullTextSearch.set('en', db.doc('post/1'), {data});
+    }
+
+    const snap = await db.doc('/related/v1/words/javascript').get();
+    const data = snap.data() as WordEntity;
+    expect(data.related.sort()).toStrictEqual(
+      ['JavaScript', 'Javascript', 'javascript'].sort()
+    );
+  });
+
   it('search:simple', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_simple');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const results = await fullTextSearch.search('en', 'firestore');
-    expect(results.length).toBe(1);
-    expect(results[0].id).toBe('gF4lmS8gOlkAPlqGzTHh');
+    const {hits} = await fullTextSearch.search('en', 'firestore');
+    expect(hits.length).toBe(1);
+    expect(hits[0].id).toBe('gF4lmS8gOlkAPlqGzTHh');
   });
 
   it('search:double-keywords', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_simple');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const results = await fullTextSearch.search('en', 'firebase firestore');
+    const {hits} = await fullTextSearch.search('en', 'firebase firestore');
 
-    expect(results.length).toBe(2);
+    expect(hits.length).toBe(2);
   });
 
   it('search:nothing', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_simple');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const results = await fullTextSearch.search('en', 'nothing');
-    expect(results.length).toBe(0);
+    const {hits} = await fullTextSearch.search('en', 'nothing');
+    expect(hits.length).toBe(0);
   });
 });
 
@@ -138,31 +152,28 @@ describe('FirestoreFullTextSearch', () => {
     const dogs: {[key: string]: Animal} = {
       akita: {
         type: 'dog',
-        class: 'akita',
         description:
           'The Akita (秋田犬, Akita-inu, Japanese pronunciation: [akʲita.inɯ]) is a large breed of dog originating from the mountainous regions of northern Japan.',
         like: 10,
       },
       corgi: {
         type: 'dog',
-        class: 'corgi',
         description:
           'The Welsh Corgi (/ˈkɔːrɡi/[5] plural "Corgis" or occasionally the etymologically consistent "Corgwn"; /ˈkɔːrɡuːn/) is a small type of herding dog that originated in Wales.[6]',
         like: 50,
       },
       'border collie': {
         type: 'dog',
-        class: 'corey',
         description:
           'The Border Collie is a working and herding dog breed developed in the Anglo-Scottish border county of Northumberland, for herding livestock, especially sheep.[1]',
         like: 5,
       },
     };
 
-    const batch = db.batch();
     const indexRef = db.collection('index_dogs_sort');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
     for (const [id, data] of Object.entries(dogs)) {
+      const batch = db.batch();
       const dogRef = db.collection('dogs').doc(id);
       batch.set(dogRef, data);
       await fullTextSearch.set('en', dogRef, {
@@ -171,17 +182,17 @@ describe('FirestoreFullTextSearch', () => {
         indexMask: ['description'],
         fields: ['like'],
       });
+      await batch.commit();
     }
-    await batch.commit();
   });
 
   it('search:sort', async () => {
     const indexRef = db.collection('index_dogs_sort');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const results = await fullTextSearch.search('en', 'herding');
-    expect(results.length === 2).toBe(true);
-    expect(results[0].id).toBe('border collie');
-    expect(results[1].id).toBe('corgi');
+    const {hits} = await fullTextSearch.search('en', 'herding');
+    expect(hits.length === 2).toBe(true);
+    expect(hits[0].id).toBe('border collie');
+    expect(hits[1].id).toBe('corgi');
     // console.log(results.map(res => res.id));
   });
 
@@ -196,7 +207,6 @@ describe('FirestoreFullTextSearch', () => {
 
     const docRef = postsRef.doc('post1');
     await docRef.set(postData);
-    console.log({docID: docRef.id});
 
     const indexRef = db.collection('index_delete_test');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);

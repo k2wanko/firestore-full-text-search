@@ -11,5 +11,6 @@ export interface Tokenizer {
 
 export type Token = {
   word: string;
+  normalizedWord: string;
   positions: number[];
 };

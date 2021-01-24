@@ -248,21 +248,18 @@ describe('querySearch', () => {
     const dogs: {[key: string]: Animal} = {
       akita: {
         type: 'dog',
-        class: 'akita',
         description:
           'The Akita (秋田犬, Akita-inu, Japanese pronunciation: [akʲita.inɯ]) is a large breed of dog originating from the mountainous regions of northern Japan.',
         like: 10,
       },
       corgi: {
         type: 'dog',
-        class: 'corgi',
         description:
           'The Welsh Corgi (/ˈkɔːrɡi/[5] plural "Corgis" or occasionally the etymologically consistent "Corgwn"; /ˈkɔːrɡuːn/) is a small type of herding dog that originated in Wales.[6]',
         like: 50,
       },
       'border collie': {
         type: 'dog',
-        class: 'corey',
         description:
           'The Border Collie is a working and herding dog breed developed in the Anglo-Scottish border county of Northumberland, for herding livestock, especially sheep.[1]',
         like: 5,
@@ -290,93 +287,105 @@ describe('querySearch', () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_posts');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const res = await fullTextSearch.search('en', 'hello label:published');
-    expect(res.length).toBe(2);
+    const {hits} = await fullTextSearch.search('en', 'hello label:published');
+    expect(hits.length).toBe(2);
   });
 
   it('string:field-not-in', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_posts');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const res = await fullTextSearch.search('en', 'hello -label:published');
-    expect(res.length).toBe(1);
+    const {hits} = await fullTextSearch.search('en', 'hello -label:published');
+    expect(hits.length).toBe(1);
   });
 
   it('number:greater-than', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_dogs');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const res = await fullTextSearch.search('en', 'herding like:>5');
-    expect(res.length >= 1).toBe(true);
-    expect(res[0].id).toBe('corgi');
+    const {hits} = await fullTextSearch.search('en', 'herding like:>5');
+    expect(hits.length >= 1).toBe(true);
+    expect(hits[0].id).toBe('corgi');
   });
 
   it('number:greater-than-or-equal', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_dogs');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const res = await fullTextSearch.search('en', 'herding like:>=5');
-    expect(res.length >= 2).toBe(true);
-    expect(res[0].id).toBe('border collie');
-    expect(res[1].id).toBe('corgi');
+    const {hits} = await fullTextSearch.search('en', 'herding like:>=5');
+    expect(hits.length >= 2).toBe(true);
+    expect(hits[0].id).toBe('border collie');
+    expect(hits[1].id).toBe('corgi');
   });
 
   it('number:less-than', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_dogs');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const res = await fullTextSearch.search('en', 'herding like:<10');
-    expect(res.length >= 1).toBe(true);
-    expect(res[0].id).toBe('border collie');
+    const {hits} = await fullTextSearch.search('en', 'herding like:<10');
+    expect(hits.length >= 1).toBe(true);
+    expect(hits[0].id).toBe('border collie');
   });
 
   it('number:less-than-or-equal', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_dogs');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const res = await fullTextSearch.search('en', 'herding like:<=50');
-    expect(res.length >= 2).toBe(true);
-    expect(res[0].id).toBe('border collie');
-    expect(res[1].id).toBe('corgi');
+    const {hits} = await fullTextSearch.search('en', 'herding like:<=50');
+    expect(hits.length >= 2).toBe(true);
+    expect(hits[0].id).toBe('border collie');
+    expect(hits[1].id).toBe('corgi');
   });
 
   it('date:greater-than', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_posts');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const res = await fullTextSearch.search('en', 'hello created:>2021-01-01');
-    expect(res.length >= 2).toBe(true);
-    expect(res[0].id).toBe('cF7lfawhaOlkAPlqGzTHh');
-    expect(res[1].id).toBe('dF7lfawhaOlkAPlqGzTHh');
+    const {hits} = await fullTextSearch.search(
+      'en',
+      'hello created:>2021-01-01'
+    );
+    expect(hits.length >= 2).toBe(true);
+    expect(hits[0].id).toBe('cF7lfawhaOlkAPlqGzTHh');
+    expect(hits[1].id).toBe('dF7lfawhaOlkAPlqGzTHh');
   });
 
   it('date:greater-than-or-equal', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_posts');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const res = await fullTextSearch.search('en', 'hello created:>=2021-01-01');
-    expect(res.length >= 3).toBe(true);
-    expect(res[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
-    expect(res[1].id).toBe('cF7lfawhaOlkAPlqGzTHh');
-    expect(res[2].id).toBe('dF7lfawhaOlkAPlqGzTHh');
+    const {hits} = await fullTextSearch.search(
+      'en',
+      'hello created:>=2021-01-01'
+    );
+    expect(hits.length >= 3).toBe(true);
+    expect(hits[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
+    expect(hits[1].id).toBe('cF7lfawhaOlkAPlqGzTHh');
+    expect(hits[2].id).toBe('dF7lfawhaOlkAPlqGzTHh');
   });
 
   it('date:less-than', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_posts');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const res = await fullTextSearch.search('en', 'hello created:<2021-01-02');
-    expect(res.length === 1).toBe(true);
-    expect(res[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
+    const {hits} = await fullTextSearch.search(
+      'en',
+      'hello created:<2021-01-02'
+    );
+    expect(hits.length === 1).toBe(true);
+    expect(hits[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
   });
 
   it('date:less-than-or-equal', async () => {
     const db = admin.firestore();
     const indexRef = db.collection('index_posts');
     const fullTextSearch = new FirestoreFullTextSearch(indexRef);
-    const res = await fullTextSearch.search('en', 'hello created:<=2021-01-02');
-    expect(res.length === 2).toBe(true);
-    expect(res[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
-    expect(res[1].id).toBe('cF7lfawhaOlkAPlqGzTHh');
+    const {hits} = await fullTextSearch.search(
+      'en',
+      'hello created:<=2021-01-02'
+    );
+    expect(hits.length === 2).toBe(true);
+    expect(hits[0].id).toBe('bF7lfaw8gOlkAPlqGzTHh');
+    expect(hits[1].id).toBe('cF7lfawhaOlkAPlqGzTHh');
   });
 });
