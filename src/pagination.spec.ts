@@ -1,5 +1,5 @@
 import admin from 'firebase-admin';
-import fs from 'fs/promises';
+import fs from 'fs';
 import path from 'path';
 import FirestoreFullTextSearch from './index';
 
@@ -17,10 +17,19 @@ const fullTextSearch = new FirestoreFullTextSearch(index);
 
 describe('pagination', () => {
   beforeAll(async () => {
-    const {items} = await fs
-      .readFile(path.resolve(__dirname, '..', 'testdata', '5.en.json'))
-      .then(res => res.toString('utf-8'))
-      .then(res => JSON.parse(res));
+    const {items} = await new Promise((resolve, reject) => {
+      fs.readFile(
+        path.resolve(__dirname, '..', 'testdata', '5.en.json'),
+        (err, data) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          resolve(JSON.parse(data.toString('utf-8')));
+        }
+      );
+    });
     for (const {title, description} of items) {
       const batch = db.batch();
       const ref = docs.doc(title);
