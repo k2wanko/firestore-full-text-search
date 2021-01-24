@@ -29,6 +29,7 @@ type WriteDeleteData = {
   precondition?: Precondition;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function flatDeep(arr: Array<any>, d = 1): Array<any> {
   return d > 0
     ? arr.reduce(
@@ -67,6 +68,7 @@ export class WriteBatch2 {
   }
 
   delete(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     documentRef: DocumentReference<any>,
     precondition?: Precondition
   ): WriteBatch2 {
