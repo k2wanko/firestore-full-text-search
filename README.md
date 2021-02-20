@@ -50,8 +50,8 @@ const results = await fullTextSearch.search('en', 'firestore');
 - [x] Implement Query parser
 - [x] Implement Delete document 
 - [x] Sorting Support
-- [ ] Limit Support
-- [ ] Pagination Support
+- [x] Limit Support
+- [x] Pagination Support
 - [x] OpenTelemetry Support
 - [ ] Browser Support (Search-Only)
 - [ ] Firebase Performance Monitoring Support

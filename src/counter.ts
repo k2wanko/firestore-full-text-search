@@ -1,11 +1,12 @@
-import type {DocumentReference, WriteBatch} from '@google-cloud/firestore';
+import type {DocumentReference} from '@google-cloud/firestore';
 import {FieldValue} from '@google-cloud/firestore';
+import {WriteBatch2} from './utils/firestore';
 
 export async function incrementCounter(
   ref: DocumentReference,
   numShards: number,
   numIncrement: number,
-  options?: {batch: WriteBatch}
+  options?: {batch: WriteBatch2}
 ) {
   const shardId = Math.floor(Math.random() * numShards).toString();
   const shardRef = ref.collection('count').doc(shardId);

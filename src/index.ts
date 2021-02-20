@@ -3,6 +3,7 @@ import type {
   DocumentData,
   DocumentReference,
   Firestore,
+  Query,
   WriteBatch,
 } from '@google-cloud/firestore';
 import {FieldValue} from '@google-cloud/firestore';
@@ -12,6 +13,8 @@ import {trace, metrics} from '@opentelemetry/api';
 import {parseQuery, SearchQuery} from './query';
 import {calcScore} from './sort';
 import {getCount, incrementCounter} from './counter';
+import {WriteBatch2} from './utils/firestore';
+import {Cursor, CursorBuilder, parseCursor} from './cursor';
 
 export type FieldEntity = {
   __positions: Buffer;
@@ -20,7 +23,7 @@ export type FieldEntity = {
 };
 
 export type WordEntity = {
-  idf: number;
+  related: string[];
 };
 
 export type CounterEntity = {
@@ -46,6 +49,13 @@ export type DeleteOptions = {
 
 export type SearchOptions = {
   limit?: number;
+  cursor?: Cursor;
+};
+
+export type SearchResult = {
+  hits: DocumentReference[];
+  total: number;
+  cursor?: Cursor;
 };
 
 export type FieldTypeEntity = {
@@ -61,7 +71,7 @@ const documentWriteCounter = meter.createCounter('document_write_count');
 const documentWriteTokenCounter = meter.createCounter(
   'document_write_token_count'
 );
-const searchTokenCounter = meter.createCounter('search_token_count');
+// const searchTokenCounter = meter.createCounter('search_token_count');
 
 const defaultSharedCounterNum = 3;
 
@@ -69,6 +79,7 @@ export default class FirestoreFullTextSearch {
   #ref: CollectionReference;
   #db: Firestore;
   #wordsRef: CollectionReference;
+  #wordDocsRef: CollectionReference;
   #fieldsRef: CollectionReference;
   #options?: Options;
 
@@ -76,6 +87,7 @@ export default class FirestoreFullTextSearch {
     this.#ref = ref;
     this.#db = ref.firestore;
     this.#wordsRef = ref.doc('v1').collection('words');
+    this.#wordDocsRef = ref.doc('v1').collection('word_docs');
     this.#fieldsRef = ref.doc('v1').collection('fields');
     this.#options = options;
   }
@@ -101,7 +113,7 @@ export default class FirestoreFullTextSearch {
       throw new Error('Document is empty');
     }
 
-    const batch = options?.batch ?? this.#db.batch();
+    const batch = new WriteBatch2(this.#db, {batch: options?.batch});
     const indexMask = options?.indexMask;
     const fields = options?.fields;
 
@@ -138,7 +150,7 @@ export default class FirestoreFullTextSearch {
       const tokens = tokenize(lang, value);
       tokensMap.set(fieldName, tokens);
       for (const token of tokens) {
-        const word = token.word;
+        const word = token.normalizedWord;
         if (!word) {
           continue;
         }
@@ -164,13 +176,42 @@ export default class FirestoreFullTextSearch {
         throw new Error('Not found tokens');
       }
       for (const token of tokens) {
-        const word = token.word;
+        const word = token.normalizedWord;
         if (!word) {
           continue;
         }
         const wordRef = this.#wordsRef.doc(word);
+        const wordSnap = await wordRef.get();
+        if (wordSnap.exists) {
+          const wordData = wordSnap.data() as WordEntity;
+          batch.set(
+            wordRef,
+            {
+              related: Array.from(
+                new Set(wordData.related.concat([token.word])).keys()
+              ),
+            },
+            {merge: true}
+          );
+        } else {
+          batch.set(wordRef, {related: [token.word]});
+        }
+
         const wordDocCount = await getCount(wordRef);
         const docRef = wordRef.collection('docs').doc(`${doc.id}.${fieldName}`);
+        const wordDocRef = this.#wordDocsRef.doc(`${word}.${doc.id}`);
+        const docData = {
+          __word: word,
+          __fields: Array.from(targetFields.values()),
+          __positions: new Uint8Array(token.positions),
+          __score: calcScore(
+            token.positions.length,
+            tokens.length,
+            wordDocCount + (newWordCountMap.get(word) ?? 0),
+            allDocCount + newDocCount
+          ),
+          __ref: doc,
+        };
         if (fields) {
           const fieldTypes: {[key: string]: FieldType} = {};
           const fieldData: {[key: string]: unknown} = {};
@@ -211,28 +252,11 @@ export default class FirestoreFullTextSearch {
               type,
             } as FieldTypeEntity);
           }
-          batch.set(docRef, {
-            __positions: new Uint8Array(token.positions),
-            __score: calcScore(
-              token.positions.length,
-              tokens.length,
-              wordDocCount + (newWordCountMap.get(word) ?? 0),
-              allDocCount + newDocCount
-            ),
-            __ref: doc,
-            ..._fieldData,
-          });
+          batch.set(docRef, {...{__ref: doc}, ..._fieldData});
+          batch.set(wordDocRef, {...docData, ..._fieldData});
         } else {
-          batch.set(docRef, {
-            __positions: new Uint8Array(token.positions),
-            __score: calcScore(
-              token.positions.length,
-              tokens.length,
-              wordDocCount + (newWordCountMap.get(word) ?? 0),
-              allDocCount + newDocCount
-            ),
-            __ref: doc,
-          });
+          batch.set(docRef, {__ref: doc});
+          batch.set(wordDocRef, docData);
         }
 
         if (newWordCountMap.has(word)) {
@@ -256,9 +280,7 @@ export default class FirestoreFullTextSearch {
       {batch}
     );
 
-    if (!options?.batch) {
-      await batch.commit();
-    }
+    await batch.commit();
 
     documentWriteCounter
       .bind({
@@ -301,7 +323,7 @@ export default class FirestoreFullTextSearch {
       throw new Error('Document is empty');
     }
 
-    const batch = options?.batch ?? this.#db.batch();
+    const batch = new WriteBatch2(this.#db, {batch: options?.batch});
     const indexMask = options?.indexMask;
     let docCount = 0;
 
@@ -322,14 +344,16 @@ export default class FirestoreFullTextSearch {
 
       const tokens = tokenize(lang, vaule);
       for (const token of tokens) {
-        const word = token.word;
+        const word = token.normalizedWord;
         if (!word) {
           continue;
         }
         const wordRef = this.#wordsRef.doc(word);
         const docRef = wordRef.collection('docs').doc(`${doc.id}.${fieldName}`);
+        const wordDocRef = this.#wordDocsRef.doc(`${word}.${doc.id}`);
 
         batch.delete(docRef);
+        batch.delete(wordDocRef);
         await incrementCounter(
           wordRef,
           this.#options?.sharedCounterNum ?? defaultSharedCounterNum,
@@ -347,9 +371,7 @@ export default class FirestoreFullTextSearch {
       {batch}
     );
 
-    if (!options?.batch) {
-      await batch.commit();
-    }
+    await batch.commit();
 
     span.end();
   }
@@ -358,12 +380,14 @@ export default class FirestoreFullTextSearch {
     lang: LanguageID,
     stringOrQuery: string | SearchQuery,
     options?: SearchOptions
-  ) {
+  ): Promise<SearchResult> {
     const span = tracer.startSpan('search');
     span.setAttributes({
       index: this.#ref.path,
       lang,
     });
+
+    const cursorQueue: string[] = [];
 
     let searchQuery: SearchQuery;
     if (typeof stringOrQuery === 'string') {
@@ -373,9 +397,9 @@ export default class FirestoreFullTextSearch {
     }
 
     let limit = options?.limit ?? 100;
-    if (limit <= 0) {
-      limit = 0;
-    } else if (limit >= 500) {
+    if (limit < 1) {
+      limit = 1;
+    } else if (limit > 500) {
       limit = 500;
     }
 
@@ -389,64 +413,93 @@ export default class FirestoreFullTextSearch {
       fieldInfos = snap.map(doc => ({name: doc.id, type: doc.data()?.type}));
     }
 
-    const results: {[key: string]: DocumentReference} = {};
+    const words: string[] = [];
+    let total = 0;
     for (const keyword of searchQuery.keywords) {
       const tokens = tokenize(lang, keyword);
       for (const token of tokens) {
-        const docsRef = this.#wordsRef.doc(token.word).collection('docs');
+        words.push(token.normalizedWord);
+        const wordRef = this.#wordsRef.doc(token.normalizedWord);
+        const count = await getCount(wordRef);
+        if (count === 0) {
+          continue;
+        }
+        total += count;
+      }
+    }
 
-        let query = docsRef.limit(limit);
-        if (fieldInfos) {
-          for (const info of fieldInfos) {
-            if (!fields) {
-              continue;
-            }
-            const field = fields.find(f => f.name === info.name);
-            if (!field) {
-              continue;
-            }
-            switch (info.type) {
-              case 'string':
-                query = query.where(field.name, field.operator, field.value);
+    let query: Query = this.#wordDocsRef;
+    if (words.length === 1) {
+      query = query.where('__word', '==', words[0]);
+    } else {
+      query = query.where('__word', 'in', words);
+    }
+
+    if (fieldInfos) {
+      for (const info of fieldInfos) {
+        if (!fields) {
+          continue;
+        }
+        const field = fields.find(f => f.name === info.name);
+        if (!field) {
+          continue;
+        }
+        switch (info.type) {
+          case 'string':
+            query = query.where(field.name, field.operator, field.value);
+            break;
+          case 'array':
+            switch (field.operator) {
+              case '==':
+                query = query.where(field.name, 'in', [[field.value].sort()]);
                 break;
-              case 'array':
-                switch (field.operator) {
-                  case '==':
-                    query = query.where(field.name, 'in', [
-                      [field.value].sort(),
-                    ]);
-                    break;
-                  case '!=':
-                    query = query.where(field.name, 'not-in', [
-                      [field.value].sort(),
-                    ]);
-                    break;
-                  default:
-                }
+              case '!=':
+                query = query.where(field.name, 'not-in', [
+                  [field.value].sort(),
+                ]);
                 break;
               default:
-                query = query.where(field.name, field.operator, field.value);
             }
-          }
-        } else {
-          query = query.orderBy('__score', 'desc');
-        }
-
-        const snap = await query.get();
-        for (const doc of snap.docs) {
-          const data = doc.data() as FieldEntity;
-          results[data.__ref.id] = data.__ref;
+            break;
+          default:
+            query = query.where(field.name, field.operator, field.value);
         }
       }
-
-      searchTokenCounter
-        .bind({
-          index: this.#ref.path,
-          lang,
-        })
-        .add(tokens.length);
+    } else {
+      query = query.orderBy('__score', 'desc');
+      cursorQueue.push('__score');
     }
-    span.end();
-    return Object.values(results);
+
+    const cursor = options?.cursor;
+    if (cursor) {
+      const info = await parseCursor(cursor);
+      query = query.startAfter(
+        ...info.fields.map(field => info.fieldValueMap[field])
+      );
+    }
+
+    if (limit !== undefined) {
+      query = query.limit(limit);
+    }
+
+    const snap = await query.get();
+
+    if (snap.empty) {
+      return {hits: [], total};
+    }
+
+    const lastVisible = snap.docs[snap.docs.length - 1];
+    const cursorBuilder = new CursorBuilder();
+    for (const queue of cursorQueue) {
+      cursorBuilder.add(queue, lastVisible.data()[queue]);
+    }
+
+    const hits = snap.docs.map(doc => doc.data().__ref);
+
+    return {
+      hits,
+      total,
+      cursor: hits.length < limit ? undefined : await cursorBuilder.build(),
+    };
   }
 }
