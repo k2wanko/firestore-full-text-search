@@ -55,6 +55,7 @@ export type SearchOptions = {
 
 export type SearchResult = {
   hits: DocumentReference[];
+  total: number;
   cursor?: Cursor;
 };
 
@@ -417,9 +418,18 @@ export default class FirestoreFullTextSearch {
     }
 
     const words: string[] = [];
+    let total = 0;
     for (const keyword of searchQuery.keywords) {
-      const token = tokenize(lang, keyword);
-      words.push(...token.map(t => t.normalizedWord));
+      const tokens = tokenize(lang, keyword);
+      for (const token of tokens) {
+        words.push(token.normalizedWord);
+        const wordRef = this.#wordsRef.doc(token.normalizedWord);
+        const count = await getCount(wordRef);
+        if (count === 0) {
+          continue;
+        }
+        total += count;
+      }
     }
 
     let query: Query = this.#wordDocsRef;
@@ -479,7 +489,7 @@ export default class FirestoreFullTextSearch {
     const snap = await query.get();
 
     if (snap.empty) {
-      return {hits: []};
+      return {hits: [], total};
     }
 
     const lastVisible = snap.docs[snap.docs.length - 1];
@@ -488,9 +498,12 @@ export default class FirestoreFullTextSearch {
       cursorBuilder.add(queue, lastVisible.data()[queue]);
     }
 
+    const hits = snap.docs.map(doc => doc.data().__ref);
+
     return {
-      hits: snap.docs.map(doc => doc.data().__ref),
-      cursor: await cursorBuilder.build(),
+      hits,
+      total,
+      cursor: hits.length < limit ? undefined : await cursorBuilder.build(),
     };
   }
 }

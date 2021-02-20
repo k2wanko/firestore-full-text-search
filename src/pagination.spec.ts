@@ -47,33 +47,34 @@ describe('pagination', () => {
   });
 
   it('basic', async () => {
-    const {hits, cursor} = await fullTextSearch.search('en', 'member', {
+    const {hits, total, cursor} = await fullTextSearch.search('en', 'member', {
       limit: 2,
     });
 
-    console.log({hits: hits.map(hit => hit.id), cursor});
+    // console.log({hits: hits.map(hit => hit.id), total, cursor});
 
     expect(hits.length).toBe(2);
     expect(hits.map(hit => hit.path)).toStrictEqual([
       'animals/Cattle',
       'animals/Cat',
     ]);
-    // expect(total).toBe(3);
+    expect(total).toBe(3);
 
     const {
       hits: hits2,
-      // total: total2,
+      total: total2,
       cursor: cursor2,
     } = await fullTextSearch.search('en', 'member', {
-      limit: 1,
+      limit: 2,
       cursor,
     });
 
     console.log({hits2: hits2.map(hit => hit.id), cursor2});
 
     expect(hits2.length).toBe(1);
+    expect(cursor2).toBe(undefined);
     expect(hits2.map(hit => hit.path)).toStrictEqual(['animals/Bird']);
-    // expect(total2).toBe(3);
+    expect(total2).toBe(3);
   });
 
   // it('startAfter', async () => {
