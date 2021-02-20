@@ -253,10 +253,10 @@ export default class FirestoreFullTextSearch {
               type,
             } as FieldTypeEntity);
           }
-          batch.set(docRef, {...docData, ..._fieldData});
+          batch.set(docRef, {...{__ref: doc}, ..._fieldData});
           batch.set(wordDocRef, {...docData, ..._fieldData});
         } else {
-          batch.set(docRef, docData);
+          batch.set(docRef, {__ref: doc});
           batch.set(wordDocRef, docData);
         }
 
