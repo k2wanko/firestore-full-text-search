@@ -14,7 +14,7 @@
     "firebase",
     "firestore"
   ],
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Firestore Full-text Search",
   "scripts": {
     "test": "firebase emulators:exec jest",
