@@ -4,7 +4,7 @@
     "rootDir": "src",
     "outDir": "lib",
     "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
   },
   "include": [
     "src/**/*.ts",
