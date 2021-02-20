@@ -4,9 +4,9 @@ export type Japanese = 'ja';
 
 export interface Tokenizer {
   getLanguage(): LanguageID;
-  getStopWords(): Set<string>;
-  splitter(content: string): string[];
-  stemmer(content: string): string;
+  getStopWords(): Promise<Set<string>>;
+  splitter(content: string): Promise<string[]>;
+  stemmer(content: string): Promise<string>;
 }
 
 export type Token = {
