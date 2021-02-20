@@ -5,6 +5,7 @@
     "outDir": "lib",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
+    "target": "ES2020"
   },
   "include": [
     "src/**/*.ts",

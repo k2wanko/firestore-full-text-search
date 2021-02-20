@@ -46,6 +46,7 @@
     "@opentelemetry/tracing": "^0.14.0",
     "@types/jest": "^26.0.20",
     "@types/luxon": "^1.25.1",
+    "@types/msgpack": "^0.0.30",
     "@types/node": "^14.11.2",
     "firebase-tools": "^9.2.1",
     "gts": "^3.0.3",
@@ -57,6 +58,7 @@
     "@opentelemetry/api": "^0.14.0",
     "firebase-admin": "^9.4.2",
     "firebase-functions": "^3.13.0",
-    "luxon": "^1.25.0"
+    "luxon": "^1.25.0",
+    "msgpack": "^1.0.3"
   }
 }

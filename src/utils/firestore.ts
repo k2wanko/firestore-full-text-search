@@ -133,10 +133,8 @@ export function startsWith(
   const start = value.slice(0, value.length - 1);
   const end = value.slice(value.length - 1, value.length);
   const v = `${start}${String.fromCharCode(end.charCodeAt(0) + 1)}`;
-  console.log({
-    start,
-    end,
-    v,
-  });
-  return query.where(fieldPath, '>=', value).where(fieldPath, '<', v);
+  return query
+    .where(fieldPath, '>=', value)
+    .where(fieldPath, '<', v)
+    .orderBy(fieldPath);
 }

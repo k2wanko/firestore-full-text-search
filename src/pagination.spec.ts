@@ -1,6 +1,7 @@
 import admin from 'firebase-admin';
 import fs from 'fs';
 import path from 'path';
+import {getCount} from './counter';
 import FirestoreFullTextSearch from './index';
 
 process.env.FIRESTORE_EMULATOR_HOST =
@@ -17,6 +18,11 @@ const fullTextSearch = new FirestoreFullTextSearch(index);
 
 describe('pagination', () => {
   beforeAll(async () => {
+    const count = await getCount(index.doc('v1'));
+    if (count !== 0) {
+      return;
+    }
+
     const {items} = await new Promise((resolve, reject) => {
       fs.readFile(
         path.resolve(__dirname, '..', 'testdata', '5.en.json'),
@@ -41,13 +47,55 @@ describe('pagination', () => {
   });
 
   it('basic', async () => {
-    const {hits, total} = await fullTextSearch.search('en', 'member', {
-      limit: 1,
+    const {hits, cursor} = await fullTextSearch.search('en', 'member', {
+      limit: 2,
     });
-    expect(hits.length).toBe(1);
-    expect(hits[0].path).toBe('animals/Cattle');
-    expect(total).toBe(3);
+
+    console.log({hits: hits.map(hit => hit.id), cursor});
+
+    expect(hits.length).toBe(2);
+    expect(hits.map(hit => hit.path)).toStrictEqual([
+      'animals/Cattle',
+      'animals/Cat',
+    ]);
+    // expect(total).toBe(3);
+
+    const {
+      hits: hits2,
+      // total: total2,
+      cursor: cursor2,
+    } = await fullTextSearch.search('en', 'member', {
+      limit: 1,
+      cursor,
+    });
+
+    console.log({hits2: hits2.map(hit => hit.id), cursor2});
+
+    expect(hits2.length).toBe(1);
+    expect(hits2.map(hit => hit.path)).toStrictEqual(['animals/Bird']);
+    // expect(total2).toBe(3);
   });
+
+  // it('startAfter', async () => {
+  //   const wordsSnap = await db
+  //     .collection('/pagination/v1/word_docs')
+  //     .where('__word', '==', 'member')
+  //     .orderBy('__score', 'desc')
+  //     .limit(2)
+  //     .get();
+
+  //   const last = wordsSnap.docs[wordsSnap.docs.length - 1];
+  //   console.log({ids: wordsSnap.docs.map(doc => doc.id)});
+
+  //   const nextSnap = await db
+  //     .collection('/pagination/v1/word_docs')
+  //     .where('__word', '==', 'member')
+  //     .orderBy('__score', 'desc')
+  //     .startAfter(last)
+  //     .limit(2)
+  //     .get();
+  //   console.log({ids: nextSnap.docs.map(doc => doc.id)});
+  // });
 
   // it('startsWith', async () => {
   //   const wordsRef = index.doc('v1').collection('words');
