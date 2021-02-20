@@ -1,8 +1,9 @@
-import {
+import type {
   CollectionReference,
   DocumentData,
   DocumentReference,
   Firestore,
+  Query,
   WriteBatch,
 } from '@google-cloud/firestore';
 import {FieldValue} from '@google-cloud/firestore';
@@ -198,10 +199,10 @@ export default class FirestoreFullTextSearch {
 
         const wordDocCount = await getCount(wordRef);
         const docRef = wordRef.collection('docs').doc(`${doc.id}.${fieldName}`);
-        const wordDocRef = this.#wordDocsRef.doc(`${word}_${doc.id}`);
+        const wordDocRef = this.#wordDocsRef.doc(`${word}.${doc.id}`);
         const docData = {
           __word: word,
-          __field: fieldName,
+          __fields: Array.from(targetFields.values()),
           __positions: new Uint8Array(token.positions),
           __score: calcScore(
             token.positions.length,
@@ -349,7 +350,7 @@ export default class FirestoreFullTextSearch {
         }
         const wordRef = this.#wordsRef.doc(word);
         const docRef = wordRef.collection('docs').doc(`${doc.id}.${fieldName}`);
-        const wordDocRef = this.#wordDocsRef.doc(`${word}_${doc.id}`);
+        const wordDocRef = this.#wordDocsRef.doc(`${word}.${doc.id}`);
 
         batch.delete(docRef);
         batch.delete(wordDocRef);
@@ -421,7 +422,12 @@ export default class FirestoreFullTextSearch {
       words.push(...token.map(t => t.normalizedWord));
     }
 
-    let query = this.#wordDocsRef.where('__word', 'in', words);
+    let query: Query = this.#wordDocsRef;
+    if (words.length === 1) {
+      query = query.where('__word', '==', words[0]);
+    } else {
+      query = query.where('__word', 'in', words);
+    }
 
     if (fieldInfos) {
       for (const info of fieldInfos) {
@@ -487,132 +493,4 @@ export default class FirestoreFullTextSearch {
       cursor: await cursorBuilder.build(),
     };
   }
-
-  // async search(
-  //   lang: LanguageID,
-  //   stringOrQuery: string | SearchQuery,
-  //   options?: SearchOptions
-  // ): Promise<SearchResult> {
-  //   const span = tracer.startSpan('search');
-  //   span.setAttributes({
-  //     index: this.#ref.path,
-  //     lang,
-  //   });
-
-  //   const context = createSearchContext();
-
-  //   let searchQuery: SearchQuery;
-  //   if (typeof stringOrQuery === 'string') {
-  //     searchQuery = parseQuery(stringOrQuery);
-  //   } else {
-  //     searchQuery = stringOrQuery;
-  //   }
-  //   context.query = searchQuery;
-
-  //   let limit = options?.limit ?? 100;
-  //   if (limit < 1) {
-  //     limit = 1;
-  //   } else if (limit > 500) {
-  //     limit = 500;
-  //   }
-  //   context.limit = limit;
-
-  //   const fields = searchQuery?.fields;
-  //   type fieldInfo = {name: string; type: FieldType};
-  //   let fieldInfos: fieldInfo[] | null = null;
-  //   if (fields) {
-  //     const snap = await this.#db.getAll(
-  //       ...fields.map(field => this.#fieldsRef.doc(field.name))
-  //     );
-  //     fieldInfos = snap.map(doc => ({name: doc.id, type: doc.data()?.type}));
-  //   }
-
-  //   const results: {[key: string]: DocumentReference} = {};
-  //   let total = 0;
-  //   for (const keyword of searchQuery.keywords) {
-  //     const tokens = tokenize(lang, keyword);
-  //     for (const token of tokens) {
-  //       const wordRef = this.#wordsRef.doc(token.normalizedWord);
-  //       const count = await getCount(wordRef);
-  //       if (count === 0) {
-  //         continue;
-  //       }
-  //       total += count;
-
-  //       let query = this.#wordDocsRef.where(
-  //         '__word',
-  //         '==',
-  //         token.normalizedWord
-  //       );
-
-  //       if (fieldInfos) {
-  //         for (const info of fieldInfos) {
-  //           if (!fields) {
-  //             continue;
-  //           }
-  //           const field = fields.find(f => f.name === info.name);
-  //           if (!field) {
-  //             continue;
-  //           }
-  //           switch (info.type) {
-  //             case 'string':
-  //               query = query.where(field.name, field.operator, field.value);
-  //               break;
-  //             case 'array':
-  //               switch (field.operator) {
-  //                 case '==':
-  //                   query = query.where(field.name, 'in', [
-  //                     [field.value].sort(),
-  //                   ]);
-  //                   break;
-  //                 case '!=':
-  //                   query = query.where(field.name, 'not-in', [
-  //                     [field.value].sort(),
-  //                   ]);
-  //                   break;
-  //                 default:
-  //               }
-  //               break;
-  //             default:
-  //               query = query.where(field.name, field.operator, field.value);
-  //           }
-  //         }
-  //       } else {
-  //         query = query.orderBy('__score', 'desc');
-  //       }
-
-  //       const startAfter = options?.startAfter;
-  //       if (startAfter) {
-  //         query = query.startAfter(this.#db.doc(startAfter));
-  //       }
-
-  //       if (limit !== undefined) {
-  //         query = query.limit(limit);
-  //       }
-
-  //       const snap = await query.get();
-  //       for (const doc of snap.docs) {
-  //         const data = doc.data() as FieldEntity;
-  //         results[data.__ref.id] = data.__ref;
-  //         context.lastVisible = doc.ref;
-  //       }
-  //     }
-
-  //     searchTokenCounter
-  //       .bind({
-  //         index: this.#ref.path,
-  //         lang,
-  //       })
-  //       .add(tokens.length);
-  //   }
-  //   const hits = Object.values(results);
-
-  //   span.end();
-
-  //   return {
-  //     hits,
-  //     total,
-  //     last: context.lastVisible?.path ?? '',
-  //   };
-  // }
 }
