@@ -1,6 +1,4 @@
 import type {FieldValue} from '@google-cloud/firestore';
-import msgpack from 'msgpack';
-
 export type Cursor = string;
 
 export interface CursorInfo {
@@ -9,15 +7,11 @@ export interface CursorInfo {
 }
 
 async function createCursor(info: CursorInfo): Promise<Cursor> {
-  const data = msgpack.pack(info, true);
-  if (data instanceof Buffer) {
-    return data.toString('base64');
-  }
-  return data;
+  return Buffer.from(JSON.stringify(info)).toString('base64');
 }
 
 export async function parseCursor(cursor: Cursor): Promise<CursorInfo> {
-  return msgpack.unpack(Buffer.from(cursor, 'base64')) as CursorInfo;
+  return JSON.parse(Buffer.from(cursor, 'base64').toString()) as CursorInfo;
 }
 
 export class CursorBuilder {
