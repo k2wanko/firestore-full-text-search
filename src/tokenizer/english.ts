@@ -295,17 +295,17 @@ export class EnglishTokenizer implements Tokenizer {
     return 'en';
   }
 
-  getStopWords(): Set<string> {
+  async getStopWords(): Promise<Set<string>> {
     return stopWords;
   }
 
-  splitter(content: string): string[] {
+  async splitter(content: string): Promise<string[]> {
     const words = content.trim().split(/ +/);
     return words.map(word => word.replace(/[.,:"]+$/g, '')).filter(v => !!v);
   }
 
   // implemented from algorithm at http://snowball.tartarus.org/algorithms/english/stemmer.html
-  stemmer(content: string): string {
+  async stemmer(content: string): Promise<string> {
     if (content.length < 3) {
       return content;
     }

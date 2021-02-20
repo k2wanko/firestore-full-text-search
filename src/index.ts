@@ -147,7 +147,7 @@ export default class FirestoreFullTextSearch {
       if (typeof value !== 'string') {
         continue;
       }
-      const tokens = tokenize(lang, value);
+      const tokens = await tokenize(lang, value);
       tokensMap.set(fieldName, tokens);
       for (const token of tokens) {
         const word = token.normalizedWord;
@@ -342,7 +342,7 @@ export default class FirestoreFullTextSearch {
         continue;
       }
 
-      const tokens = tokenize(lang, vaule);
+      const tokens = await tokenize(lang, vaule);
       for (const token of tokens) {
         const word = token.normalizedWord;
         if (!word) {
@@ -416,7 +416,7 @@ export default class FirestoreFullTextSearch {
     const words: string[] = [];
     let total = 0;
     for (const keyword of searchQuery.keywords) {
-      const tokens = tokenize(lang, keyword);
+      const tokens = await tokenize(lang, keyword);
       for (const token of tokens) {
         words.push(token.normalizedWord);
         const wordRef = this.#wordsRef.doc(token.normalizedWord);

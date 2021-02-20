@@ -1,16 +1,23 @@
 import type {Tokenizer, LanguageID, Token} from './index';
 import {EnglishTokenizer} from './english';
+import {JapaneseTokenizer} from './japanese';
 
-export default function tokenize(lang: LanguageID, text: string): Token[] {
+export default async function tokenize(
+  lang: LanguageID,
+  text: string
+): Promise<Token[]> {
   let tokeneizer: Tokenizer | null = null;
   switch (lang) {
     case 'en':
       tokeneizer = new EnglishTokenizer();
       break;
+    case 'ja':
+      tokeneizer = new JapaneseTokenizer();
+      break;
     default:
       throw new Error(`Unsupport language: ${lang}`);
   }
-  const words = tokeneizer.splitter(text);
+  const words = await tokeneizer.splitter(text);
 
   const wordToPositions = new Map<
     string,
@@ -18,11 +25,11 @@ export default function tokenize(lang: LanguageID, text: string): Token[] {
   >();
   let index = 0;
   for (const word of words) {
-    if (tokeneizer.getStopWords().has(word)) {
+    if ((await tokeneizer.getStopWords()).has(word)) {
       continue;
     }
 
-    const stemWord = tokeneizer.stemmer(word.toLowerCase());
+    const stemWord = await tokeneizer.stemmer(word.toLowerCase());
     if (wordToPositions.has(stemWord)) {
       wordToPositions.set(stemWord, {
         word,

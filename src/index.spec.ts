@@ -233,3 +233,34 @@ describe('FirestoreFullTextSearch', () => {
     }
   });
 });
+
+describe('FirestoreFullTextSearch:japanese', () => {
+  it('set:simple', async () => {
+    const db = admin.firestore();
+
+    const postsRef = db.collection('posts');
+    const postData: Post = {
+      title: 'Firestore Full-Text Searchとは?',
+      content:
+        'Firestore Full-Text Search は、Firestoreに特化した全文検索機能を提供します。Cloud Functions上で動作し、優れたパフォーマンスを発揮します。',
+      created: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    const docRef = postsRef.doc('gF4lmS8gOlkAPlqGzTHh');
+    await docRef.set(postData);
+
+    const indexRef = db.collection('index_ja');
+    const fullTextSearch = new FirestoreFullTextSearch(indexRef);
+    await fullTextSearch.set('ja', docRef);
+
+    const word = 'パフォーマンス';
+    const wants = ['content'];
+    for (const field of wants) {
+      const contentRef = indexRef.doc(
+        `/v1/words/${word}/docs/${docRef.id}.${field}`
+      );
+      const contentSnap = await contentRef.get();
+      expect(contentSnap.exists).toBe(true);
+    }
+  });
+});
