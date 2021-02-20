@@ -14,7 +14,6 @@ import {parseQuery, SearchQuery} from './query';
 import {calcScore} from './sort';
 import {getCount, incrementCounter} from './counter';
 import {WriteBatch2} from './utils/firestore';
-import {createSearchContext} from './context';
 import {Cursor, CursorBuilder, parseCursor} from './cursor';
 
 export type FieldEntity = {
@@ -388,7 +387,6 @@ export default class FirestoreFullTextSearch {
       lang,
     });
 
-    const context = createSearchContext();
     const cursorQueue: string[] = [];
 
     let searchQuery: SearchQuery;
@@ -397,7 +395,6 @@ export default class FirestoreFullTextSearch {
     } else {
       searchQuery = stringOrQuery;
     }
-    context.query = searchQuery;
 
     let limit = options?.limit ?? 100;
     if (limit < 1) {
@@ -405,7 +402,6 @@ export default class FirestoreFullTextSearch {
     } else if (limit > 500) {
       limit = 500;
     }
-    context.limit = limit;
 
     const fields = searchQuery?.fields;
     type fieldInfo = {name: string; type: FieldType};
