@@ -10,7 +10,7 @@ Supports simple inverted index type search.
 npm install --save firestore-full-text-search
 ```
 
-```js
+```ts
 import admin from 'firebase-admin';
 import FirestoreFullTextSearch from 'firestore-full-text-search';
 
