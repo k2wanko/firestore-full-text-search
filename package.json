@@ -59,6 +59,6 @@
     "firebase-admin": "^9.4.2",
     "firebase-functions": "^3.13.0",
     "kuromoji": "^0.1.2",
-    "luxon": "^1.25.0"
+    "luxon": "^2.5.2"
   }
 }
